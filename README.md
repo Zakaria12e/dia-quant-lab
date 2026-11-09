@@ -16,7 +16,7 @@ Notre actif est le **DIA**, l'ETF qui réplique le Dow Jones Industrial Average 
 
 L'application couvre toute la chaîne : elle télécharge les données de marché, les audite, entraîne plusieurs familles de modèles, estime le risque, transforme les prévisions en décisions d'achat ou de retour en liquidités, simule ces décisions sur l'historique, puis les suit sur de nouvelles séances réelles. Six espaces, un parcours continu — chaque étape consomme la sortie de la précédente.
 
-Le capital est de 100 000 dollars virtuels. Aucun argent réel n'intervient à aucun moment.
+Le capital est de 100 000 dollars virtuels.
 
 ---
 
