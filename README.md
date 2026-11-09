@@ -8,7 +8,7 @@ Responsable pédagogique : Pr. Tawfik Masrour · Édition novembre 2026
 | :--- | :--- |
 | **Variante** | B09 — Grandes capitalisations du Dow Jones |
 | **Actif** | `DIA` · benchmark `SPY` |
-| **Binôme** | [Nom Prénom] · [Nom Prénom] |
+| **Binôme** | Hamza Aghazzaf · Zakaria El Bidali |
 | **Dépôt** | Trois services : Next.js, Go/Echo, Python/FastAPI |
 
 ---
