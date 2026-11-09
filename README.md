@@ -16,7 +16,7 @@ Notre actif est le **DIA**, l'ETF qui réplique le Dow Jones Industrial Average 
 
 L'application couvre toute la chaîne : elle télécharge les données de marché, les audite, entraîne plusieurs familles de modèles, estime le risque, transforme les prévisions en décisions d'achat ou de retour en liquidités, simule ces décisions sur l'historique, puis les suit sur de nouvelles séances réelles. Six espaces, un parcours continu — chaque étape consomme la sortie de la précédente.
 
-Le capital est de 100 000 dollars virtuels.
+Le capital est de 100 000 dollars virtuels. Aucun argent réel n'intervient à aucun moment.
 
 ---
 
@@ -40,15 +40,25 @@ Il faut le dire d'emblée : la conclusion peut aller contre les modèles complex
 
 **Angle de discussion final :** efficience prédictive et opérationnelle.
 
+### Pourquoi cette variante et pourquoi le DIA
+
+Nous avons choisi B09 pour deux raisons.
+
+La question d'abord : savoir si la complexité se paie est une question dont nous ne connaissons pas la réponse à l'avance, et qui correspond à notre formation en génie logiciel — mesurer un coût, instrumenter un pipeline et garantir la reproductibilité est notre métier.
+
+Le DIA ensuite, parce que c'est le terrain **le plus défavorable** aux modèles complexes, et donc le test le plus propre. Sur un ETF volatil, la non-linéarité et les ruptures de régime donneraient l'avantage aux modèles souples par construction. Ici cet avantage n'est pas donné : il faut le démontrer. Si le machine learning doit perdre, c'est sur cet actif — et s'il gagne malgré tout, le résultat n'en est que plus solide.
+
+S'ajoute un argument pratique : l'historique du DIA est long, très liquide et peu accidenté. Une différence observée entre deux modèles vient donc des modèles, et non d'un artefact de données.
+
 ---
 
 ## 3. Les données
 
 Nous travaillons sur des séries journalières ajustées — ouverture, haut, bas, clôture, volume — pour DIA et pour SPY. « Ajustées » signifie corrigées des dividendes et des splits, sans quoi le modèle verrait des chutes de prix qui n'en sont pas.
 
-La source est `yfinance`, mais nous ne l'interrogeons qu'une fois : le téléchargement produit un **snapshot Parquet daté** sous `quant-service/data/`, et c'est ce fichier que lit tout le reste du code. Nos résultats restent ainsi recalculables à l'identique même si Yahoo modifie son API.
+La source est `yfinance`, mais nous ne l'interrogeons qu'une fois : le téléchargement produit un **snapshot Parquet daté** sous `backend/data/`, et c'est ce fichier que lit tout le reste du code. Nos résultats restent ainsi recalculables à l'identique même si Yahoo modifie son API.
 
-La provenance complète — instrument, dates, fuseau, fréquence, convention d'ajustement, lacunes constatées, date d'acquisition — est consignée dans `quant-service/data/README.md`.
+La provenance complète — instrument, dates, fuseau, fréquence, convention d'ajustement, lacunes constatées, date d'acquisition — est consignée dans `backend/data/README.md`.
 
 ### Les fenêtres, gelées avant le premier entraînement
 
@@ -67,7 +77,7 @@ C'est le point sur lequel nous avons le plus investi, pour une raison simple : u
 Le principe est que la décision pour la séance `t+1` se prend après la clôture de `t`, en n'utilisant que ce qui était observable à `t` au plus tard. Trois dispositions le garantissent :
 
 - Le décalage de la cible est écrit **une seule fois**, dans une fonction unique de `src/features.py`. Aucun autre module ne le réimplémente, donc il n'existe pas deux versions de la règle susceptibles de divergir.
-- `quant-service/tests/test_no_leakage.py` échoue si une valeur future remonte dans une variable passée, ou si une statistique de normalisation franchit une frontière de fenêtre.
+- `backend/tests/test_no_leakage.py` échoue si une valeur future remonte dans une variable passée, ou si une statistique de normalisation franchit une frontière de fenêtre.
 - Les statistiques de normalisation sont estimées sur l'apprentissage seul, puis appliquées. C'est une fuite discrète et classique : normaliser sur l'ensemble des données fait entrer la moyenne du futur dans le passé.
 
 ---
@@ -127,23 +137,20 @@ C'est la seule preuve à l'abri du futur, puisque le futur n'était pas encore a
 
 ## 7. L'application
 
-Trois services séparés, afin que le cœur scientifique reste isolé de la couche applicative.
+Deux services : un backend Python qui porte tout le travail scientifique, et un frontend qui l'expose.
 
 ```mermaid
 flowchart LR
     U["Utilisateur"] --> F["Frontend<br/>Next.js — 6 vues"]
-    F -->|REST| B["Backend<br/>Go / Echo"]
-    B -->|REST interne| Q["Quant service<br/>Python / FastAPI"]
+    F -->|REST / OpenAPI| B["Backend<br/>Python · FastAPI"]
     B --> DB[("SQLite<br/>jobs · journal · portefeuille")]
-    Q --> S[("Snapshots Parquet datés")]
-    Q -->|yfinance| M["Marché — DIA, SPY"]
+    B --> S[("Snapshots Parquet datés")]
+    B -->|yfinance| M["Marché — DIA, SPY"]
 ```
 
-Le **frontend** en Next.js porte les six espaces obligatoires : Market Data, Model Laboratory, Risk Management, Trading Strategy, Backtesting et Paper Trading. Il ne parle qu'au backend Go.
+Le **frontend** en Next.js et TypeScript porte les six espaces obligatoires : Market Data, Model Laboratory, Risk Management, Trading Strategy, Backtesting et Paper Trading. Les graphiques sont en Plotly.js, et le client TypeScript est généré depuis le schéma OpenAPI du backend — le contrat est donc vérifié à la compilation plutôt qu'à l'exécution.
 
-Le **backend** en Go avec Echo gère le journal des ordres, l'état du portefeuille, l'orchestration et le suivi des jobs, les exports.
-
-Le **quant-service** en Python avec FastAPI porte les données, les features, les modèles, le risque, la règle de décision, le moteur de backtest et le paper trading.
+Le **backend** en Python avec FastAPI porte les données, les features, les modèles, le risque, la règle de décision, le moteur de backtest, le paper trading, le journal des ordres et l'état du portefeuille. Il n'y a qu'un seul langage côté serveur, et donc un seul endroit où chercher un bug.
 
 ### Un invariant que nous nous imposons
 
@@ -157,7 +164,7 @@ L'effet secondaire est exactement ce dont notre variante avait besoin. Chaque en
 
 ### Le mode DEMO
 
-`DEMO_MODE=1` fait lire le snapshot gelé au lieu du réseau, et `quant-service/app_demo.py` offre un point d'entrée Streamlit mono-processus. L'application reste donc démontrable sans réseau, et même si le frontend ou le backend Go ne démarrent pas sur la machine de l'évaluateur.
+`DEMO_MODE=1` fait lire le snapshot gelé au lieu du réseau, et `backend/app_demo.py` offre un point d'entrée Streamlit mono-processus. L'application reste donc démontrable sans réseau, et même si le frontend ne démarre pas sur la machine de l'évaluateur.
 
 ---
 
@@ -167,7 +174,7 @@ L'effet secondaire est exactement ce dont notre variante avait besoin. Chaque en
 
 **[Nom 2] — apprentissage, moteur et simulation.** Ridge ou régression logistique, Random Forest ou gradient boosting, MLP PyTorch (D05). Instrumentation du coût de calcul, mesure centrale de notre variante. Moteur de décision et de backtest (D06). Paper trading et journal exportable (D08). Vues Model Lab, Strategy, Backtesting et Paper Trading.
 
-**Ensemble.** Cadrage et architecture du dépôt (D01). Contrat d'API entre les trois services et assemblage de l'application (D07). Tests, seeds et reproductibilité (D09). Rapport et soutenance (D10).
+**Ensemble.** Cadrage et architecture du dépôt (D01). Contrat OpenAPI entre le backend et le frontend, et assemblage de l'application (D07). Tests, seeds et reproductibilité (D09). Rapport et soutenance (D10).
 
 Chacun de nous doit pouvoir expliquer les modèles, le backtest et la chaîne de décision complète — y compris la partie dont il n'est pas responsable.
 
@@ -176,18 +183,18 @@ Chacun de nous doit pouvoir expliquer les modèles, le backtest et la chaîne de
 ## 9. Organisation du dépôt
 
 ```
-frontend/                  Next.js — six vues, un seul client API (lib/api.ts)
+frontend/                  Next.js + TypeScript
+  app/                     six vues
+  components/charts/       Plotly.js
+  lib/api.ts               client unique vers le backend
+  lib/api-types.ts         généré depuis le schéma OpenAPI
 backend/
-  cmd/server/              point d'entrée Echo
-  internal/handlers/       handlers HTTP
-  internal/quantclient/    client interne vers le quant-service
-  internal/store/          SQLite : jobs, journal, portefeuille
-quant-service/
   main.py                  FastAPI — montage des routeurs
   api/                     validation et sérialisation, aucun calcul
   src/                     data · features · risk · strategy · backtest · paper
   src/models/              baselines · arima · garch · ml · dl · registry
   jobs.py                  file de jobs, mesure du coût de calcul
+  store.py                 SQLite : jobs, journal, portefeuille
   app_demo.py              mode DEMO Streamlit
   configs/frozen.yaml      splits, coûts, seed, capital — gelés
   data/                    snapshots datés + provenance
@@ -204,14 +211,14 @@ docker-compose.yml  .env.example  .gitignore
 | | Livrable | Emplacement | État |
 | :--- | :--- | :--- | :--- |
 | D01 | Cadrage et dépôt | ce fichier | ✅ |
-| D02 | Données et audit | `quant-service/src/data.py` · `data/` | ⬜ |
-| D03 | Économétrie de la moyenne | `src/models/arima.py` · `notebooks/` | ⬜ |
-| D04 | Module de risque | `src/risk.py` · `src/models/garch.py` | ⬜ |
-| D05 | ML et Deep Learning | `src/models/ml.py` · `dl.py` | ⬜ |
-| D06 | Stratégie et backtest | `src/strategy.py` · `src/backtest.py` | ⬜ |
+| D02 | Données et audit | `backend/src/data.py` · `backend/data/` | ⬜ |
+| D03 | Économétrie de la moyenne | `backend/src/models/arima.py` · `notebooks/` | ⬜ |
+| D04 | Module de risque | `backend/src/risk.py` · `src/models/garch.py` | ⬜ |
+| D05 | ML et Deep Learning | `backend/src/models/ml.py` · `dl.py` | ⬜ |
+| D06 | Stratégie et backtest | `backend/src/strategy.py` · `src/backtest.py` | ⬜ |
 | D07 | Application Web | `frontend/` · `backend/` · `app_demo.py` | ⬜ |
-| D08 | Paper trading | `src/paper.py` · `reports/` | ⬜ |
-| D09 | Reproductibilité et tests | `tests/` · `requirements.txt` · `configs/` | ⬜ |
+| D08 | Paper trading | `backend/src/paper.py` · `reports/` | ⬜ |
+| D09 | Reproductibilité et tests | `backend/tests/` · `requirements.txt` · `configs/` | ⬜ |
 | D10 | Rapport et défense | `reports/` | ⬜ |
 
 ---
@@ -226,22 +233,31 @@ docker compose up --build
 | | |
 | :--- | :--- |
 | Frontend | http://localhost:3000 |
-| Backend Go | http://localhost:8080 |
-| Quant service — OpenAPI | http://localhost:8000/docs |
+| Backend — OpenAPI | http://localhost:8000/docs |
 
-Sans Docker, ou pour la démonstration hors réseau :
+Sans Docker :
 
 ```bash
-cd quant-service
+# terminal 1 — backend
+cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-DEMO_MODE=1 streamlit run app_demo.py
+uvicorn main:app --reload
+
+# terminal 2 — frontend
+cd frontend && npm install && npm run dev
+```
+
+Démonstration hors réseau, en un seul processus :
+
+```bash
+cd backend && DEMO_MODE=1 streamlit run app_demo.py
 ```
 
 Lancer les tests :
 
 ```bash
-cd quant-service && pytest -q
+cd backend && pytest -q
 ```
 
 ---
@@ -250,6 +266,6 @@ cd quant-service && pytest -q
 
 Aucune clé d'API ne figure dans le dépôt ni dans les captures d'écran : variables d'environnement uniquement, `.env` exclu par `.gitignore`, `.env.example` versionné comme modèle.
 
-Les seeds et les paramètres gelés sont versionnés dans `configs/frozen.yaml`. Les graphiques sont titrés, les unités indiquées, les prévisions confrontées à leurs réalisations. Quand une approche échoue, nous l'expliquons plutôt que de la retirer du rapport : un échec compris vaut mieux qu'un résultat flatteur inexpliqué.
+Les seeds et les paramètres gelés sont versionnés dans `backend/configs/frozen.yaml`. Les graphiques sont titrés, les unités indiquées, les prévisions confrontées à leurs réalisations. Quand une approche échoue, nous l'expliquons plutôt que de la retirer du rapport : un échec compris vaut mieux qu'un résultat flatteur inexpliqué.
 
 Aucun argent réel n'intervient à aucune étape du projet, et aucun compte de courtage réel n'est ouvert.
