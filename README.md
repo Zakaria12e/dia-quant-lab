@@ -170,101 +170,13 @@ L'effet secondaire est exactement ce dont notre variante avait besoin. Chaque en
 
 ## 8. Qui fait quoi
 
-**[Nom 1] — données, économétrie et risque.** Collecte, audit qualité et snapshots de DIA et SPY (D02). ARIMA, SARIMA et SARIMAX avec SPY retardé (D03). Test ARCH-LM, GARCH(1,1), volatilité prévue, VaR et Expected Shortfall (D04). Vues Market Data et Risk Management.
+**Hamza Aghazzaf — données, économétrie et risque.** Collecte, audit qualité et snapshots de DIA et SPY (D02). ARIMA, SARIMA et SARIMAX avec SPY retardé (D03). Test ARCH-LM, GARCH(1,1), volatilité prévue, VaR et Expected Shortfall (D04). Vues Market Data et Risk Management.
 
-**[Nom 2] — apprentissage, moteur et simulation.** Ridge ou régression logistique, Random Forest ou gradient boosting, MLP PyTorch (D05). Instrumentation du coût de calcul, mesure centrale de notre variante. Moteur de décision et de backtest (D06). Paper trading et journal exportable (D08). Vues Model Lab, Strategy, Backtesting et Paper Trading.
+**Zakaria El Bidali — apprentissage, moteur et simulation.** Ridge ou régression logistique, Random Forest ou gradient boosting, MLP PyTorch (D05). Instrumentation du coût de calcul, mesure centrale de notre variante. Moteur de décision et de backtest (D06). Paper trading et journal exportable (D08). Vues Model Lab, Strategy, Backtesting et Paper Trading.
 
 **Ensemble.** Cadrage et architecture du dépôt (D01). Contrat OpenAPI entre le backend et le frontend, et assemblage de l'application (D07). Tests, seeds et reproductibilité (D09). Rapport et soutenance (D10).
 
 Chacun de nous doit pouvoir expliquer les modèles, le backtest et la chaîne de décision complète — y compris la partie dont il n'est pas responsable.
-
----
-
-## 9. Organisation du dépôt
-
-```
-frontend/                  Next.js + TypeScript
-  app/                     six vues
-  components/charts/       Plotly.js
-  lib/api.ts               client unique vers le backend
-  lib/api-types.ts         généré depuis le schéma OpenAPI
-backend/
-  main.py                  FastAPI — montage des routeurs
-  api/                     validation et sérialisation, aucun calcul
-  src/                     data · features · risk · strategy · backtest · paper
-  src/models/              baselines · arima · garch · ml · dl · registry
-  jobs.py                  file de jobs, mesure du coût de calcul
-  store.py                 SQLite : jobs, journal, portefeuille
-  app_demo.py              mode DEMO Streamlit
-  configs/frozen.yaml      splits, coûts, seed, capital — gelés
-  data/                    snapshots datés + provenance
-  notebooks/               preuves exploratoires
-  tests/                   pytest, dont l'étanchéité temporelle
-  reports/                 tableaux de résultats et figures
-docker-compose.yml  .env.example  .gitignore
-```
-
----
-
-## 10. Où trouver chaque livrable
-
-| | Livrable | Emplacement | État |
-| :--- | :--- | :--- | :--- |
-| D01 | Cadrage et dépôt | ce fichier | ✅ |
-| D02 | Données et audit | `backend/src/data.py` · `backend/data/` | ⬜ |
-| D03 | Économétrie de la moyenne | `backend/src/models/arima.py` · `notebooks/` | ⬜ |
-| D04 | Module de risque | `backend/src/risk.py` · `src/models/garch.py` | ⬜ |
-| D05 | ML et Deep Learning | `backend/src/models/ml.py` · `dl.py` | ⬜ |
-| D06 | Stratégie et backtest | `backend/src/strategy.py` · `src/backtest.py` | ⬜ |
-| D07 | Application Web | `frontend/` · `backend/` · `app_demo.py` | ⬜ |
-| D08 | Paper trading | `backend/src/paper.py` · `reports/` | ⬜ |
-| D09 | Reproductibilité et tests | `backend/tests/` · `requirements.txt` · `configs/` | ⬜ |
-| D10 | Rapport et défense | `reports/` | ⬜ |
-
----
-
-## 11. Lancer le projet
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-| | |
-| :--- | :--- |
-| Frontend | http://localhost:3000 |
-| Backend — OpenAPI | http://localhost:8000/docs |
-
-Sans Docker :
-
-```bash
-# terminal 1 — backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
-
-# terminal 2 — frontend
-cd frontend && npm install && npm run dev
-```
-
-Démonstration hors réseau, en un seul processus :
-
-```bash
-cd backend && DEMO_MODE=1 streamlit run app_demo.py
-```
-
-Lancer les tests :
-
-```bash
-cd backend && pytest -q
-```
-
----
-
-## 12. Secrets et traçabilité
-
-Aucune clé d'API ne figure dans le dépôt ni dans les captures d'écran : variables d'environnement uniquement, `.env` exclu par `.gitignore`, `.env.example` versionné comme modèle.
 
 Les seeds et les paramètres gelés sont versionnés dans `backend/configs/frozen.yaml`. Les graphiques sont titrés, les unités indiquées, les prévisions confrontées à leurs réalisations. Quand une approche échoue, nous l'expliquons plutôt que de la retirer du rapport : un échec compris vaut mieux qu'un résultat flatteur inexpliqué.
 
