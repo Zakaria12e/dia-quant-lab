@@ -1,0 +1,29 @@
+# Environnements virtuels
+venv/
+.venv/
+env/
+ENV/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+
+# Variables d'environnement (jamais versionner les secrets)
+.env
+
+# Checkpoints Jupyter
+.ipynb_checkpoints/
+
+# Cache pytest
+.pytest_cache/
+
+# Fichiers temporaires de l'éditeur
+*.swp
+*.swo
+.DS_Store
+.claude
+Thumbs.db
+
+# Note : data/*.parquet est intentionnellement versionné (snapshot daté)
