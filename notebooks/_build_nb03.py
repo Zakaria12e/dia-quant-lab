@@ -91,14 +91,14 @@ print("  Total séances   :", len(frame))
 print("  Apprentissage   :", int(train_mask.sum()))
 print("  Validation      :", len(dec["validation"]))
 print("  Test            :", len(dec["test"]))
-print("  Période totale  :", str(frame.index[0].date()), "→", str(frame.index[-1].date()))
+print("  Période totale  :", str(frame.index[0].date()), "->", str(frame.index[-1].date()))
 """
 
 CELL_ADF_MD = """\
 ## 1. Test de stationnarité — ADF
 
-**H₀** : présence d'une racine unitaire (série non stationnaire).
-Rejet de H₀ à 5 % → rendements log stationnaires, **d = 0 justifié**.
+**H0** : présence d'une racine unitaire (série non stationnaire).
+Rejet de H0 à 5 % -> rendements log stationnaires, **d = 0 justifié**.
 Test effectué sur la fenêtre d'apprentissage uniquement.
 """
 
@@ -136,9 +136,9 @@ plot_acf(r_train,     lags=25, ax=axes[0, 0],
 plot_pacf(r_train,    lags=25, ax=axes[0, 1],
           title="PACF — Rendements DIA (apprentissage)")
 plot_acf(r_train**2,  lags=25, ax=axes[1, 0],
-         title="ACF — Rendements² DIA (effets ARCH)")
+         title="ACF — Rendements DIA carres (effets ARCH)")
 plot_pacf(r_train**2, lags=25, ax=axes[1, 1],
-          title="PACF — Rendements² DIA")
+          title="PACF — Rendements DIA carres")
 
 for ax in axes.flat:
     ax.set_xlabel("Lag")
@@ -152,12 +152,12 @@ CELL_GRILLE_MD = """\
 ## 2. Grille ARIMA(p, 0, q) — sélection par AIC
 
 d = 0 : les rendements log sont stationnaires (voir ADF).
-Grille : p ∈ [0, 3], q ∈ [0, 3] selon `configs/frozen.yaml`.
+Grille : p in [0, 3], q in [0, 3] selon `configs/frozen.yaml`.
 Estimation sur l'apprentissage uniquement — l'AIC sert de critère de sélection.
 """
 
 CELL_GRILLE = """\
-print("Calcul de la grille ARIMA — peut prendre ~1 min…")
+print("Calcul de la grille ARIMA — peut prendre ~1 min...")
 df_grille = grille_arima(frame, train_mask)
 
 p_best = int(df_grille.iloc[0]["p"])
@@ -171,7 +171,7 @@ display(df_grille.head(8))
 """
 
 CELL_ARIMA_FIT = """\
-print("Estimation ARIMA" + str(meilleur_ordre) + " sur l'apprentissage…")
+print("Estimation ARIMA" + str(meilleur_ordre) + " sur l'apprentissage...")
 res_arima = fit_state_space(
     frame, train_mask,
     order=meilleur_ordre,
@@ -182,7 +182,7 @@ print("AIC = " + str(round(res_arima.aic, 2)) + "  |  BIC = " + str(round(res_ar
 print("Temps estimation : " + str(round(res_arima.fit_seconds, 2)) + " s")
 print()
 df_params = pd.DataFrame({
-    "Paramètre": res_arima.params.index,
+    "Parametre": res_arima.params.index,
     "Valeur": res_arima.params.values.round(6),
     "p-value": res_arima.pvalues.values.round(4),
     "Significatif (5%)": (res_arima.pvalues.values < 0.05),
@@ -196,6 +196,7 @@ CELL_SARIMA_MD = """\
 Période saisonnière : **s = 5** (cycle hebdomadaire, 5 séances de bourse).
 Ordre non-saisonnier fixé au meilleur ordre ARIMA trouvé par la grille.
 Trois variantes testées : (P, D, Q) = (1,0,0), (0,0,1), (1,0,1).
+Les p-values des termes saisonniers indiquent si la composante est justifiée.
 """
 
 CELL_SARIMA = """\
@@ -209,7 +210,7 @@ for P, D, Q, s in sarima_configs:
         + ")(" + str(P) + "," + str(D) + "," + str(Q)
         + ")[" + str(s) + "]"
     )
-    print("Estimation", nom, "…")
+    print("Estimation", nom, "...")
     try:
         res = fit_state_space(
             frame, train_mask,
@@ -224,6 +225,13 @@ for P, D, Q, s in sarima_configs:
             + "  |  BIC = " + str(round(res.bic, 2))
             + "  |  t_fit = " + str(round(res.fit_seconds, 2)) + " s"
         )
+        df_p = pd.DataFrame({
+            "Parametre": res.params.index,
+            "Valeur": res.params.values.round(6),
+            "p-value": res.pvalues.values.round(4),
+            "Significatif (5%)": (res.pvalues.values < 0.05),
+        })
+        display(df_p)
     except Exception as exc:
         print("  ECHEC :", exc)
         resultats_sarima[nom] = None
@@ -232,24 +240,28 @@ for P, D, Q, s in sarima_configs:
 CELL_SARIMAX_MD = """\
 ## 4. SARIMAX — variable exogène SPY retard 1
 
-**Exogène** : spy_ret_{t−1} (rendement SPY de la veille, connu à la clôture t).
-Aucune information future n'est utilisée.
+**Exogène** : spy_ret_{t-1} (rendement SPY de la veille, connu à la clôture t-1).
+La décision en t utilise SPY(t-1) — aucune information future n'est utilisée.
 Ordre non-saisonnier : meilleur ordre ARIMA. Pas de composante saisonnière.
 """
 
 CELL_SARIMAX = """\
-print("Estimation SARIMAX…")
+nom_sarimax = (
+    "SARIMAX(" + str(p_best) + ",0," + str(q_best) + ")+SPY(t-1)"
+)
+print("Estimation", nom_sarimax, "...")
 res_sarimax = fit_state_space(
     frame, train_mask,
     order=meilleur_ordre,
     seasonal_order=(0, 0, 0, 0),
     with_exog=True,
+    nom=nom_sarimax,
 )
 print("AIC = " + str(round(res_sarimax.aic, 2)) + "  |  BIC = " + str(round(res_sarimax.bic, 2)))
 print("Temps estimation : " + str(round(res_sarimax.fit_seconds, 2)) + " s")
 print()
 df_sarimax_params = pd.DataFrame({
-    "Paramètre": res_sarimax.params.index,
+    "Parametre": res_sarimax.params.index,
     "Valeur": res_sarimax.params.values.round(6),
     "p-value": res_sarimax.pvalues.values.round(4),
     "Significatif (5%)": (res_sarimax.pvalues.values < 0.05),
@@ -262,9 +274,9 @@ CELL_DIAG_MD = """\
 
 Modèle de référence : meilleur ARIMA.
 Tests appliqués aux résidus d'apprentissage (premiers 10 écartés — initialisation du filtre Kalman) :
-- **Ljung-Box** (H₀ : pas d'autocorrélation)
-- **Ljung-Box sur r²** (H₀ : pas d'effet ARCH)
-- **Jarque-Bera** (H₀ : normalité)
+- **Ljung-Box** (H0 : pas d'autocorrélation)
+- **Ljung-Box sur r²** (H0 : pas d'effet ARCH)
+- **Jarque-Bera** (H0 : normalité)
 """
 
 CELL_DIAG = """\
@@ -274,12 +286,12 @@ rows_lb = []
 for lag, v in diag["ljung_box"].items():
     rows_lb.append({
         "Lag": lag,
-        "LB stat (résidus)": v["stat"],
-        "p-value (résidus)": v["pval"],
+        "LB stat (residus)": v["stat"],
+        "p-value (residus)": v["pval"],
         "Rejette H0 (5%)": v["pval"] < 0.05,
-        "LB stat (résidus²)": diag["ljung_box_squared"][lag]["stat"],
-        "p-value (résidus²)": diag["ljung_box_squared"][lag]["pval"],
-        "ARCH détecté (5%)": diag["ljung_box_squared"][lag]["pval"] < 0.05,
+        "LB stat (residus2)": diag["ljung_box_squared"][lag]["stat"],
+        "p-value (residus2)": diag["ljung_box_squared"][lag]["pval"],
+        "ARCH detecte (5%)": diag["ljung_box_squared"][lag]["pval"] < 0.05,
     })
 df_lb = pd.DataFrame(rows_lb)
 display(df_lb)
@@ -287,20 +299,20 @@ display(df_lb)
 print()
 jb = diag["jarque_bera"]
 print("Jarque-Bera : stat = " + str(jb["stat"]) + "  |  p-value = " + str(jb["pval"]))
-print("Normalité (p>=0.05) :", jb["normalite"])
-print("Asymétrie :", diag["asymetrie"])
-print("Excès de kurtosis :", diag["kurtosis_exces"])
-print("Nombre de résidus utilisés :", diag["n_residus"])
+print("Normalite (p>=0.05) :", jb["normalite"])
+print("Asymetrie :", diag["asymetrie"])
+print("Exces de kurtosis :", diag["kurtosis_exces"])
+print("Nombre de residus utilises :", diag["n_residus"])
 
 r_resid = res_arima.residuals.dropna()
 fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-plot_acf(r_resid,     lags=25, ax=axes[0], title="ACF résidus ARIMA")
-plot_acf(r_resid**2,  lags=25, ax=axes[1], title="ACF résidus² ARIMA (test ARCH)")
+plot_acf(r_resid,     lags=25, ax=axes[0], title="ACF residus ARIMA")
+plot_acf(r_resid**2,  lags=25, ax=axes[1], title="ACF residus2 ARIMA (test ARCH)")
 plt.tight_layout()
 fig.savefig(REP_FIG / "acf_residus_arima.png", dpi=120, bbox_inches="tight")
 plt.show()
 print()
-print("Figure sauvegardée :", str(REP_FIG / "acf_residus_arima.png"))
+print("Figure sauvegardee :", str(REP_FIG / "acf_residus_arima.png"))
 
 rows_csv = []
 for lag, v in diag["ljung_box"].items():
@@ -318,15 +330,16 @@ rows_csv.append({
     "lag": None, "stat": jb["stat"], "pval": jb["pval"],
 })
 pd.DataFrame(rows_csv).to_csv(REP_D03 / "diagnostics_residus.csv", index=False)
-print("CSV sauvegardé :", str(REP_D03 / "diagnostics_residus.csv"))
+print("CSV sauvegarde :", str(REP_D03 / "diagnostics_residus.csv"))
 """
 
 CELL_VAL_MD = """\
-## 6. Comparatif — fenêtre de validation (2023-01-03 → 2024-12-31)
+## 6. Comparatif — fenêtre de validation (2023-01-03 -> 2024-12-31)
 
 Toutes les prévisions utilisent des **paramètres gelés** estimés sur l'apprentissage.
 Référence Campbell-Thompson : `historical_mean` (moyenne historique expansive décalée d'un pas).
-Le meilleur modèle est sélectionné ici pour être évalué sur le test.
+Test de Diebold-Mariano (correction HLN) : H0 = égale précision vs `historical_mean`.
+Le meilleur modèle (RMSE) sur cette fenêtre est retenu pour commentaire en section 7.
 """
 
 CELL_VAL = """\
@@ -352,14 +365,17 @@ for nom, res in resultats_sarima.items():
 rows_val = []
 for nom, res in tous_modeles.items():
     yhat = res.predictions.reindex(val_idx)
-    m = metrics(y_val, yhat, bench_val)
+    m  = metrics(y_val, yhat, bench_val)
+    dm = diebold_mariano(y_val, res_hm.predictions.reindex(val_idx), yhat)
     rows_val.append({
-        "modele":    nom,
-        "RMSE (%)":  m["rmse_pct"],
-        "MAE (%)":   m["mae_pct"],
-        "Dir acc":   m["dir_acc"],
-        "R²_oos":    m["r2_oos"],
-        "n":         m["n"],
+        "modele":      nom,
+        "RMSE (%)":    m["rmse_pct"],
+        "MAE (%)":     m["mae_pct"],
+        "Dir acc":     m["dir_acc"],
+        "R2_oos":      m["r2_oos"],
+        "DM stat":     dm["dm_stat"],
+        "DM p-value":  dm["pval"],
+        "n":           m["n"],
     })
 
 df_val = pd.DataFrame(rows_val).sort_values("RMSE (%)").reset_index(drop=True)
@@ -368,16 +384,16 @@ df_val.to_csv(REP_D03 / "comparatif_validation.csv", index=False)
 
 meilleur_val_nom = df_val.iloc[0]["modele"]
 print()
-print("CSV sauvegardé :", str(REP_D03 / "comparatif_validation.csv"))
-print("Meilleur modèle (validation, RMSE) :", meilleur_val_nom)
+print("CSV sauvegarde :", str(REP_D03 / "comparatif_validation.csv"))
+print("Meilleur modele (validation, RMSE) :", meilleur_val_nom)
 """
 
 CELL_TEST_MD = """\
-## 7. Évaluation hors échantillon — fenêtre de test (2025-01-02 → 2026-10-30)
+## 7. Évaluation hors échantillon — fenêtre de test (2025-01-02 -> 2026-10-30)
 
 Tous les modèles sont évalués sur le test avec les **mêmes paramètres gelés**.
 Test de Diebold-Mariano (correction Harvey-Leybourne-Newbold) :
-H₀ = égale précision vs `historical_mean` (benchmark Campbell-Thompson).
+H0 = égale précision vs `historical_mean` (benchmark Campbell-Thompson).
 La sélection du meilleur modèle était faite **avant** de regarder le test.
 """
 
@@ -396,7 +412,7 @@ for nom, res in tous_modeles.items():
         "RMSE (%)":    m["rmse_pct"],
         "MAE (%)":     m["mae_pct"],
         "Dir acc":     m["dir_acc"],
-        "R²_oos":      m["r2_oos"],
+        "R2_oos":      m["r2_oos"],
         "DM stat":     dm["dm_stat"],
         "DM p-value":  dm["pval"],
         "n":           m["n"],
@@ -405,7 +421,7 @@ for nom, res in tous_modeles.items():
 df_test = pd.DataFrame(rows_test).sort_values("RMSE (%)").reset_index(drop=True)
 display(df_test)
 df_test.to_csv(REP_D03 / "comparatif_test.csv", index=False)
-print("CSV sauvegardé :", str(REP_D03 / "comparatif_test.csv"))
+print("CSV sauvegarde :", str(REP_D03 / "comparatif_test.csv"))
 
 meilleur_test_nom = df_test.iloc[0]["modele"]
 res_meilleur = tous_modeles[meilleur_test_nom]
@@ -413,29 +429,53 @@ yhat_best = res_meilleur.predictions.reindex(test_idx)
 
 fig, ax = plt.subplots(figsize=(14, 5))
 ax.plot(y_test.index, y_test.values * 100,
-        label="Réalisé DIA", color="#1f77b4", alpha=0.65, lw=1)
+        label="Realise DIA", color="#1f77b4", alpha=0.65, lw=1)
 ax.plot(yhat_best.index, yhat_best.values * 100,
-        label="Prévu — " + meilleur_test_nom,
+        label="Prevu — " + meilleur_test_nom,
         color="#ff7f0e", alpha=0.85, lw=1.1)
 ax.axhline(0, color="black", lw=0.5, ls="--")
 ax.set_xlabel("Date")
 ax.set_ylabel("Rendement log (%)")
-ax.set_title("Prévision vs Réalisé — Fenêtre de test")
+ax.set_title("Prevision vs Realise — Fenetre de test")
 ax.legend()
 plt.tight_layout()
 fig.savefig(REP_FIG / "prevision_vs_realise_test.png", dpi=120, bbox_inches="tight")
 plt.show()
-print("Figure sauvegardée :", str(REP_FIG / "prevision_vs_realise_test.png"))
+print("Figure sauvegardee :", str(REP_FIG / "prevision_vs_realise_test.png"))
 """
 
 CELL_PREVISIONS = """\
-df_previsions = pd.DataFrame({"dia_ret_realise": frame["dia_ret"]})
+# previsions_datees.csv : validation + test uniquement
+# Colonnes : date_cible (index), date_prevision (J-1 ouvre), fenetre,
+#            dia_ret_realise, [un modele par colonne]
+val_test_idx = dec["validation"].index.append(dec["test"].index).sort_values()
+
+full_idx = frame.index
+prev_map = {}
+for i, d in enumerate(full_idx):
+    prev_map[d] = full_idx[i - 1] if i > 0 else pd.NaT
+
+fenetre_map = {}
+for d in dec["validation"].index:
+    fenetre_map[d] = "validation"
+for d in dec["test"].index:
+    fenetre_map[d] = "test"
+
+df_prev = pd.DataFrame({
+    "date_prevision":  [prev_map.get(d, pd.NaT) for d in val_test_idx],
+    "fenetre":         [fenetre_map[d] for d in val_test_idx],
+    "dia_ret_realise": frame.loc[val_test_idx, "dia_ret"].values,
+})
+df_prev.index = val_test_idx
+df_prev.index.name = "date_cible"
+
 for nom, res in tous_modeles.items():
-    df_previsions[nom] = res.predictions.reindex(frame.index)
-df_previsions.index.name = "date"
-df_previsions.to_csv(REP_D03 / "previsions_datees.csv")
-print("CSV sauvegardé :", str(REP_D03 / "previsions_datees.csv"))
-print("Forme :", df_previsions.shape)
+    df_prev[nom] = res.predictions.reindex(val_test_idx).values
+
+df_prev.to_csv(REP_D03 / "previsions_datees.csv")
+print("CSV sauvegarde :", str(REP_D03 / "previsions_datees.csv"))
+print("Forme :", df_prev.shape)
+print("Fenetres :", df_prev["fenetre"].value_counts().to_dict())
 
 rows_temps = []
 for nom, res in tous_modeles.items():
@@ -452,99 +492,72 @@ df_temps = (
 )
 display(df_temps)
 df_temps.to_csv(REP_D03 / "temps_calcul.csv", index=False)
-print("CSV sauvegardé :", str(REP_D03 / "temps_calcul.csv"))
+print("CSV sauvegarde :", str(REP_D03 / "temps_calcul.csv"))
 """
 
 CELL_CONCL_MD = """\
 ## 8. Conclusion
 
-Conclusions établies à partir des résultats réellement obtenus — aucun chiffre prédéfini.
-"""
+### 1. Stationnarité — d = 0 justifié
 
-CELL_CONCL = """\
-sep = "=" * 62
-print(sep)
-print("CONCLUSIONS — D03 ÉCONOMÉTRIE DE LA MOYENNE")
-print(sep)
-print()
+Le test ADF rejette la racine unitaire pour DIA (stat = −10.90, p = 0.0) et pour SPY
+(stat = −10.86, p = 0.0) sur la fenêtre d'apprentissage.
+Les rendements log sont stationnaires : d = 0 est justifié sans différenciation.
 
-conc_dia = "stationnaire" if adf_dia["stationnaire"] else "non stationnaire"
-conc_spy = "stationnaire" if adf_spy["stationnaire"] else "non stationnaire"
-print("1. STATIONNARITÉ")
-print("   DIA : " + conc_dia
-      + "  (ADF=" + str(adf_dia["stat"])
-      + ", p=" + str(adf_dia["pval"]) + ")")
-print("   SPY : " + conc_spy
-      + "  (ADF=" + str(adf_spy["stat"])
-      + ", p=" + str(adf_spy["pval"]) + ")")
-print()
+### 2. Structure MA de court terme — ordre faible
 
-print("2. SÉLECTION D'ORDRE ARIMA")
-print("   Meilleur ordre : " + str(meilleur_ordre)
-      + "  (AIC=" + str(round(res_arima.aic, 2)) + ")")
-print()
+La grille AIC sélectionne ARIMA(0,0,3) (AIC = −7267.17, BIC = −7241.48).
+ARIMA(0,0,2) est quasi équivalent en AIC (−7267.14, écart = 0.03) mais préféré par le BIC
+(−7246.59 vs −7241.48), qui pénalise davantage le paramètre supplémentaire.
+Ces deux ordres sont pratiquement indistinguables : la structure temporelle des rendements
+DIA est faible et de très courte portée (deux à trois retards MA au plus).
+L'intercept n'est pas significatif (p = 0.45), ce qui est cohérent avec l'hypothèse de rendement
+moyen nul sur l'horizon journalier.
 
-best_val_row  = df_val.iloc[0]
-print("3. COMPARATIF VALIDATION — Meilleur modèle : " + str(meilleur_val_nom))
-print("   RMSE = " + str(best_val_row["RMSE (%)"]) + " %"
-      + "  |  Dir acc = " + str(best_val_row["Dir acc"])
-      + "  |  R²_oos = " + str(best_val_row["R²_oos"]))
-print()
+### 3. Saisonnalité hebdomadaire rejetée
 
-best_test_row = df_test.iloc[0]
-print("4. ÉVALUATION TEST — Meilleur modèle : " + str(meilleur_test_nom))
-print("   RMSE = " + str(best_test_row["RMSE (%)"]) + " %"
-      + "  |  Dir acc = " + str(best_test_row["Dir acc"])
-      + "  |  R²_oos = " + str(best_test_row["R²_oos"]))
-print()
+Les trois variantes SARIMA dégradent l'AIC par rapport à l'ARIMA de base :
+SARIMA(0,0,3)(1,0,0)[5] : AIC = −7266.09, SARIMA(0,0,3)(0,0,1)[5] : AIC = −7266.25,
+SARIMA(0,0,3)(1,0,1)[5] : AIC = −7263.21.
+Les termes saisonniers ne sont pas significatifs ou à peine : ar.S.L5 dans (1,0,0)[5] affiche
+p = 0.052, et dans (1,0,1)[5] les deux termes saisonniers ont des p-values proches de 0.90.
+Seul ma.S.L5 dans (0,0,1)[5] atteint p = 0.032, mais l'AIC se dégrade quand même.
+**Conclusion : il n'existe pas de cycle hebdomadaire exploitable dans les rendements DIA.**
 
-lb10  = diag["ljung_box"][10]
-lb2_10 = diag["ljung_box_squared"][10]
-conc_lb = (
-    "autocorrélation résiduelle détectée"
-    if lb10["pval"] < 0.05
-    else "pas d'autocorrélation résiduelle"
-)
-conc_arch = (
-    "effets ARCH détectés"
-    if lb2_10["pval"] < 0.05
-    else "pas d'effets ARCH significatifs"
-)
-print("5. DIAGNOSTICS RÉSIDUS (meilleur ARIMA)")
-print("   " + conc_lb
-      + "  (LB lag=10, p=" + str(lb10["pval"]) + ")")
-print("   " + conc_arch
-      + "  (LB² lag=10, p=" + str(lb2_10["pval"]) + ")")
-print("   Jarque-Bera p=" + str(jb["pval"])
-      + "  — normalité : " + str(jb["normalite"]))
-print()
+### 4. SPY(t−1) non significatif
 
-sarimax_val_row = df_val[df_val["modele"] == res_sarimax.nom]
-sarimax_test_row = df_test[df_test["modele"] == res_sarimax.nom]
-if len(sarimax_val_row) and len(sarimax_test_row):
-    sarimax_rmse_val  = round(float(sarimax_val_row.iloc[0]["RMSE (%)"]), 4)
-    arima_rmse_val    = round(float(df_val[df_val["modele"] == res_arima.nom].iloc[0]["RMSE (%)"]), 4)
-    sarimax_rmse_test = round(float(sarimax_test_row.iloc[0]["RMSE (%)"]), 4)
-    arima_rmse_test   = round(float(df_test[df_test["modele"] == res_arima.nom].iloc[0]["RMSE (%)"]), 4)
-    print("6. APPORT DE L'EXOGÈNE SPY")
-    if sarimax_rmse_val < arima_rmse_val:
-        print("   SARIMAX améliore ARIMA en validation"
-              + " (RMSE " + str(sarimax_rmse_val)
-              + " < " + str(arima_rmse_val) + ")")
-    else:
-        print("   SARIMAX n'améliore pas ARIMA en validation"
-              + " (RMSE " + str(sarimax_rmse_val)
-              + " vs " + str(arima_rmse_val) + ")")
-    if sarimax_rmse_test < arima_rmse_test:
-        print("   SARIMAX améliore ARIMA en test"
-              + " (RMSE " + str(sarimax_rmse_test)
-              + " < " + str(arima_rmse_test) + ")")
-    else:
-        print("   SARIMAX n'améliore pas ARIMA en test"
-              + " (RMSE " + str(sarimax_rmse_test)
-              + " vs " + str(arima_rmse_test) + ")")
-print()
-print(sep)
+Dans le SARIMAX, le coefficient de spy_ret_{t−1} vaut 0.067 avec p = 0.421 (non significatif).
+L'AIC se dégrade à −7259.08 contre −7267.17 pour l'ARIMA seul.
+Le rendement du S&P 500 de la veille n'apporte pas d'information prédictive supplémentaire
+sur le rendement du DIA aujourd'hui, au-delà de ce que les termes MA capturent déjà.
+
+### 5. Aucun modèle ne bat la moyenne historique
+
+Sur la **validation** : tous les modèles économétriques ont un R²_oos négatif
+(ARIMA(0,0,3) : R²_oos = −0.055, SARIMAX : R²_oos = −0.060).
+Le test de Diebold-Mariano confirme qu'ils sont significativement moins précis que la moyenne
+historique (ARIMA : DM = −3.12, p = 0.0019 ; SARIMAX : DM = −3.33, p = 0.0009).
+Sur le **test** : les DM ne sont plus significatifs (ARIMA : p = 0.44, SARIMAX : p = 0.40),
+mais les R²_oos restent négatifs — les modèles ne surpassent pas le benchmark même là.
+Ces résultats s'accordent avec l'hypothèse d'efficience des marchés sur les grands indices liquides.
+
+### 6. SARIMAX comme baseline B09 pour D05
+
+Malgré ses limites, SARIMAX(0,0,3)+SPY(t-1) reste la baseline économétrique de référence
+pour la variante B09. Les modèles ML/DL (D05) devront le battre en termes de RMSE, de R²_oos
+et de test DM pour justifier leur complexité supplémentaire.
+La barre est basse en valeur absolue (RMSE ≈ 0.95 % sur le test), mais elle est difficile
+à franchir statistiquement, comme le montrent les DM sur la validation.
+
+### 7. Limites et perspectives
+
+- **Autocorrélation résiduelle** (LB lag = 10, p = 0.0) : des effets non linéaires subsistent
+  dans les résidus malgré les termes MA. Un modèle de la variance conditionnelle est nécessaire.
+- **Effets ARCH** (LB² lag = 10, p = 0.0) : la volatilité est hétéroscédastique → D04 (GARCH).
+- **Résidus non normaux** (JB p = 0.0, kurtosis = 17.48, asymétrie = −0.87) : les queues
+  épaisses impliquent que les intervalles de confiance gaussiens sous-estiment le risque extrême.
+- **Cible clôture-clôture** : le modèle prédit le rendement de clôture t+1, mais l'ordre
+  s'exécute à l'ouverture t+1 — le glissement entre ouverture et clôture n'est pas capturé → D06.
 """
 
 
@@ -574,7 +587,6 @@ cells = [
     new_code_cell(CELL_TEST),
     new_code_cell(CELL_PREVISIONS),
     new_markdown_cell(CELL_CONCL_MD),
-    new_code_cell(CELL_CONCL),
 ]
 
 nb = new_notebook(cells=cells)
