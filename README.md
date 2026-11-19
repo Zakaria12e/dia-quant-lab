@@ -56,9 +56,9 @@ S'ajoute un argument pratique : l'historique du DIA est long, très liquide et p
 
 Nous travaillons sur des séries journalières ajustées — ouverture, haut, bas, clôture, volume — pour DIA et pour SPY. « Ajustées » signifie corrigées des dividendes et des splits, sans quoi le modèle verrait des chutes de prix qui n'en sont pas.
 
-La source est `yfinance`, mais nous ne l'interrogeons qu'une fois : le téléchargement produit un **snapshot Parquet daté** sous `backend/data/`, et c'est ce fichier que lit tout le reste du code. Nos résultats restent ainsi recalculables à l'identique même si Yahoo modifie son API.
+La source est `yfinance`, mais nous ne l'interrogeons qu'une fois : le téléchargement produit un **snapshot Parquet daté** sous `data/`, et c'est ce fichier que lit tout le reste du code. Nos résultats restent ainsi recalculables à l'identique même si Yahoo modifie son API.
 
-La provenance complète — instrument, dates, fuseau, fréquence, convention d'ajustement, lacunes constatées, date d'acquisition — est consignée dans `backend/data/README.md`.
+La provenance complète — instrument, dates, fuseau, fréquence, convention d'ajustement, lacunes constatées, date d'acquisition — est consignée dans `data/README.md`.
 
 ### Les fenêtres, gelées avant le premier entraînement
 
@@ -77,7 +77,7 @@ C'est le point sur lequel nous avons le plus investi, pour une raison simple : u
 Le principe est que la décision pour la séance `t+1` se prend après la clôture de `t`, en n'utilisant que ce qui était observable à `t` au plus tard. Trois dispositions le garantissent :
 
 - Le décalage de la cible est écrit **une seule fois**, dans une fonction unique de `src/features.py`. Aucun autre module ne le réimplémente, donc il n'existe pas deux versions de la règle susceptibles de divergir.
-- `backend/tests/test_no_leakage.py` échoue si une valeur future remonte dans une variable passée, ou si une statistique de normalisation franchit une frontière de fenêtre.
+- `tests/test_no_leakage.py` échoue si une valeur future remonte dans une variable passée, ou si une statistique de normalisation franchit une frontière de fenêtre.
 - Les statistiques de normalisation sont estimées sur l'apprentissage seul, puis appliquées. C'est une fuite discrète et classique : normaliser sur l'ensemble des données fait entrer la moyenne du futur dans le passé.
 
 ---
@@ -168,7 +168,128 @@ L'effet secondaire est exactement ce dont notre variante avait besoin. Chaque en
 
 ---
 
-## 8. Qui fait quoi
+## 8. Reproduire D02 et D03
+
+### Prérequis
+
+```bash
+python -m pip install -r requirements.txt   # Python 3.11+
+```
+
+### Étape 1 — Télécharger les données (connexion réseau)
+
+```bash
+python -c "from src.data import download_snapshot; download_snapshot()"
+```
+
+Le snapshot daté est écrit dans `data/dia_spy_AAAA-MM-JJ.parquet`.
+Sans réseau, positionner `DEMO_MODE=1` : le code lira le snapshot existant.
+
+### Étape 2 — Vérifier l'intégrité
+
+```bash
+python -m pytest tests/ -v
+# Attendu : 22 tests passent, 0 échec
+```
+
+### Étape 3 — Regénérer le notebook D03
+
+```bash
+python notebooks/_build_nb03.py
+# Durée ~3 min — écrit et exécute 03_econometrie_moyenne.ipynb
+```
+
+Le notebook D02 (`02_donnees_audit.ipynb`) est déjà exécuté et versionné.
+
+### Structure de sortie après exécution
+
+```
+data/
+  dia_spy_2026-11-19.parquet   snapshot DIA + SPY (4 440 lignes)
+  README.md                    provenance, dictionnaire, anomalies
+
+reports/
+  d02/
+    audit_qualite.csv
+    figures/
+      coherence_base100.png
+      rendements_dia_anomalies.png
+      scatter_dia_spy.png
+  d03/
+    diagnostics_residus.csv
+    comparatif_validation.csv
+    comparatif_test.csv
+    previsions_datees.csv
+    temps_calcul.csv
+    figures/
+      acf_pacf_dia.png
+      acf_residus_arima.png
+      prevision_vs_realise_test.png
+```
+
+---
+
+## 9. Table de correspondance cahier → fichiers (D02 · D03)
+
+### D02 — Données et audit
+
+| Exigence du cahier | Fichier(s) livré(s) |
+|:---|:---|
+| Snapshot Parquet daté, source Yahoo Finance | `data/dia_spy_2026-11-19.parquet` |
+| Provenance complète (instrument, dates, lacunes) | `data/README.md` |
+| Chargement et format long → format large | `src/data.py` : `load_ohlcv()`, `load_closes()` |
+| Audit qualité (NaN, doublons, OHLC, volume, rendements extrêmes) | `src/quality.py` : `audit()` |
+| Rapport d'audit CSV | `reports/d02/audit_qualite.csv` |
+| Figure : cohérence base 100 (DIA vs SPY, 3 fenêtres colorées) | `reports/d02/figures/coherence_base100.png` |
+| Figure : rendements DIA avec annotations |r|>5σ | `reports/d02/figures/rendements_dia_anomalies.png` |
+| Figure : scatter DIA vs SPY | `reports/d02/figures/scatter_dia_spy.png` |
+| Notebook exécuté avec sorties | `notebooks/02_donnees_audit.ipynb` |
+| Tests de chargement et d'intégrité | `tests/test_data.py` (13 tests) |
+
+### D03 — Économétrie de la moyenne
+
+| Exigence du cahier | Fichier(s) livré(s) |
+|:---|:---|
+| Anti-fuite : décalage cible unique | `src/features.py` : `make_target()` |
+| Anti-fuite : paramètres gelés sur apprentissage | `src/models/econometrics.py` : `fit_state_space()` via `res.apply()` |
+| Test d'étanchéité temporelle SARIMAX | `tests/test_no_leakage.py` : `test_sarimax_gele_sur_apprentissage` |
+| Test ADF de stationnarité | `src/models/econometrics.py` : `adf_test()` |
+| Grille ARIMA(p,0,q), sélection AIC | `src/models/econometrics.py` : `grille_arima()`, `select_arima_order()` |
+| SARIMA — trois variantes saisonnières (s=5) | `src/models/econometrics.py` : `fit_state_space()` + variants |
+| SARIMAX — exogène SPY retard 1 | `src/models/econometrics.py` : `fit_state_space(with_exog=True)` |
+| Baselines naïves (zéro, dernier, moyenne historique) | `src/models/econometrics.py` : `naive_zero/last/historical_mean()` |
+| Diagnostics résidus : LB, LB², JB | `src/models/econometrics.py` : `residual_diagnostics()` |
+| Métriques : RMSE%, MAE%, Dir acc, R²_oos | `src/models/econometrics.py` : `metrics()` |
+| Test Diebold-Mariano (correction HLN) | `src/models/econometrics.py` : `diebold_mariano()` |
+| CSV diagnostics résidus | `reports/d03/diagnostics_residus.csv` |
+| CSV comparatif validation | `reports/d03/comparatif_validation.csv` |
+| CSV comparatif test | `reports/d03/comparatif_test.csv` |
+| CSV prévisions datées (toutes dates × tous modèles) | `reports/d03/previsions_datees.csv` |
+| CSV temps de calcul par modèle | `reports/d03/temps_calcul.csv` |
+| Figure : ACF/PACF rendements + carrés | `reports/d03/figures/acf_pacf_dia.png` |
+| Figure : ACF résidus ARIMA | `reports/d03/figures/acf_residus_arima.png` |
+| Figure : prévision vs réalisé (test) | `reports/d03/figures/prevision_vs_realise_test.png` |
+| Notebook exécuté avec sorties | `notebooks/03_econometrie_moyenne.ipynb` |
+| Tests anti-fuite (9 tests) | `tests/test_no_leakage.py` |
+
+### Paramètres gelés (configs/frozen.yaml)
+
+| Paramètre | Valeur |
+|:---|:---|
+| Actif | DIA |
+| Benchmark | SPY |
+| Apprentissage | 2018-01-01 → 2022-12-31 |
+| Validation | 2023-01-01 → 2024-12-31 |
+| Test | 2025-01-01 → 2026-10-30 |
+| Horizon cible | 1 séance |
+| Grille ARIMA | p, q ∈ [0, 3] |
+| Période saisonnière | 5 (hebdomadaire) |
+| Exogène SARIMAX | spy\_ret\_lag1 |
+| Seed | 42 |
+
+---
+
+## 10. Qui fait quoi
 
 **Hamza Aghazzaf — données, économétrie et risque.** Collecte, audit qualité et snapshots de DIA et SPY (D02). ARIMA, SARIMA et SARIMAX avec SPY retardé (D03). Test ARCH-LM, GARCH(1,1), volatilité prévue, VaR et Expected Shortfall (D04). Vues Market Data et Risk Management.
 
@@ -178,6 +299,6 @@ L'effet secondaire est exactement ce dont notre variante avait besoin. Chaque en
 
 Chacun de nous doit pouvoir expliquer les modèles, le backtest et la chaîne de décision complète — y compris la partie dont il n'est pas responsable.
 
-Les seeds et les paramètres gelés sont versionnés dans `backend/configs/frozen.yaml`. Les graphiques sont titrés, les unités indiquées, les prévisions confrontées à leurs réalisations. Quand une approche échoue, nous l'expliquons plutôt que de la retirer du rapport : un échec compris vaut mieux qu'un résultat flatteur inexpliqué.
+Les seeds et les paramètres gelés sont versionnés dans `configs/frozen.yaml`. Les graphiques sont titrés, les unités indiquées, les prévisions confrontées à leurs réalisations. Quand une approche échoue, nous l'expliquons plutôt que de la retirer du rapport : un échec compris vaut mieux qu'un résultat flatteur inexpliqué.
 
 Aucun argent réel n'intervient à aucune étape du projet, et aucun compte de courtage réel n'est ouvert.
