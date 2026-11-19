@@ -1,0 +1,37 @@
+contrôle,ticker,nb_anomalies,détail
+valeurs_manquantes_open,DIA,0,aucun
+valeurs_manquantes_high,DIA,0,aucun
+valeurs_manquantes_low,DIA,0,aucun
+valeurs_manquantes_close,DIA,0,aucun
+valeurs_manquantes_volume,DIA,0,aucun
+dates_en_double,DIA,0,aucun
+prix_non_positif_open,DIA,0,aucun
+prix_non_positif_high,DIA,0,aucun
+prix_non_positif_low,DIA,0,aucun
+prix_non_positif_close,DIA,0,aucun
+volume_negatif,DIA,0,aucun
+volume_nul,DIA,0,aucun
+incoherence_ohlc_high_inferieur_max_OC,DIA,0,aucun
+incoherence_ohlc_low_superieur_min_OC,DIA,0,aucun
+incoherence_ohlc_high_inferieur_low,DIA,0,aucun
+seances_manquantes_nyse,DIA,0,aucun
+valeurs_manquantes_open,SPY,0,aucun
+valeurs_manquantes_high,SPY,0,aucun
+valeurs_manquantes_low,SPY,0,aucun
+valeurs_manquantes_close,SPY,0,aucun
+valeurs_manquantes_volume,SPY,0,aucun
+dates_en_double,SPY,0,aucun
+prix_non_positif_open,SPY,0,aucun
+prix_non_positif_high,SPY,0,aucun
+prix_non_positif_low,SPY,0,aucun
+prix_non_positif_close,SPY,0,aucun
+volume_negatif,SPY,0,aucun
+volume_nul,SPY,0,aucun
+incoherence_ohlc_high_inferieur_max_OC,SPY,1,"[datetime.date(2018, 1, 11)]"
+incoherence_ohlc_low_superieur_min_OC,SPY,0,aucun
+incoherence_ohlc_high_inferieur_low,SPY,0,aucun
+seances_manquantes_nyse,SPY,0,aucun
+seances_DIA_absent_SPY,croisé,0,aucun
+seances_SPY_absent_DIA,croisé,0,aucun
+rendement_extreme_5sigma,DIA,11,"[{'date': datetime.date(2020, 3, 9), 'ret_pct': -8.1}, {'date': datetime.date(2020, 3, 11), 'ret_pct': -6.02}, {'date': datetime.date(2020, 3, 12), 'ret_pct': -10.6}, {'date': datetime.date(2020, 3, 13), 'ret_pct': 9.01}, {'date': datetime.date(2020, 3, 16), 'ret_pct': -13.65}, {'date': datetime.date(2020, 3, 18), 'ret_pct': -6.82}, {'date': datetime.date(2020, 3, 24), 'ret_pct': 10.45}, {'date': datetime.date(2020, 3, 26), 'ret_pct': 5.95}, {'date': datetime.date(2020, 4, 6), 'ret_pct': 7.29}, {'date': datetime.date(2020, 6, 11), 'ret_pct': -7.06}, {'date': datetime.date(2025, 4, 9), 'ret_pct': 7.57}] — anomalies à expliquer (ex: mars 2020), pas à supprimer"
+rendement_extreme_5sigma,SPY,8,"[{'date': datetime.date(2020, 3, 9), 'ret_pct': -8.13}, {'date': datetime.date(2020, 3, 12), 'ret_pct': -10.06}, {'date': datetime.date(2020, 3, 13), 'ret_pct': 8.2}, {'date': datetime.date(2020, 3, 16), 'ret_pct': -11.59}, {'date': datetime.date(2020, 3, 24), 'ret_pct': 8.67}, {'date': datetime.date(2020, 4, 6), 'ret_pct': 6.5}, {'date': datetime.date(2025, 4, 4), 'ret_pct': -6.03}, {'date': datetime.date(2025, 4, 9), 'ret_pct': 9.99}] — anomalies à expliquer (ex: mars 2020), pas à supprimer"
