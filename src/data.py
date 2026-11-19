@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import date
 
 import pandas as pd
-import requests
 import yfinance as yf
 import yaml
 
@@ -45,34 +44,27 @@ def download_snapshot(config: dict | None = None) -> Path:
     start = cfg["download"]["start"]
     end = cfg["download"]["end"]
 
-    # yfinance 1.8+ exige un cookie Yahoo valide. On ouvre d'abord la page
-    # principale avec un User-Agent navigateur pour obtenir les cookies,
-    # puis on passe la session à yf.download — sans ça on obtient HTTP 429.
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-    })
-    session.get("https://finance.yahoo.com", timeout=15)
-
-    raw = yf.download(
-        tickers,
-        start=start,
-        end=end,
-        auto_adjust=True,
-        progress=False,
-        session=session,
-    )
+    try:
+        raw = yf.download(
+            tickers,
+            start=start,
+            end=end,
+            auto_adjust=True,
+            progress=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Échec du téléchargement Yahoo Finance : " + str(exc) + "\n"
+            "Si Yahoo renvoie HTTP 429 (trop de requêtes), attendez quelques minutes.\n"
+            "Pour travailler sans réseau : DEMO_MODE=1"
+        ) from exc
 
     if raw.empty:
         raise RuntimeError(
-            "Aucune donnée téléchargée. "
-            "Vérifiez la connexion réseau ou réessayez dans quelques minutes."
+            "Aucune donnée téléchargée (réponse vide de Yahoo Finance). "
+            "Yahoo renvoie parfois HTTP 429 après plusieurs appels rapides — "
+            "attendez quelques minutes puis réessayez. "
+            "Pour travailler sans réseau : positionnez DEMO_MODE=1."
         )
 
     morceaux = []
