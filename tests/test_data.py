@@ -87,3 +87,66 @@ def test_demo_mode_bloque_telechargement(monkeypatch):
     from src.data import download_snapshot
     with pytest.raises(RuntimeError, match="DEMO_MODE"):
         download_snapshot()
+
+
+# ---------------------------------------------------------------------------
+# Tests de src/quality.py
+# ---------------------------------------------------------------------------
+
+from src.quality import audit
+
+
+@pytest.fixture(scope="module")
+def rapport_audit(ohlcv):
+    return audit(ohlcv)
+
+
+def test_audit_renvoie_dataframe_non_vide(rapport_audit):
+    """audit() renvoie un DataFrame avec au moins une ligne."""
+    assert isinstance(rapport_audit, pd.DataFrame)
+    assert len(rapport_audit) > 0
+
+
+def test_audit_colonnes_attendues(rapport_audit):
+    """audit() contient les colonnes obligatoires."""
+    attendues = {"contrôle", "ticker", "nb_anomalies", "détail"}
+    assert attendues.issubset(set(rapport_audit.columns))
+
+
+def test_audit_detecte_incoherence_ohlc():
+    """Un DataFrame avec high < low est bien détecté comme incohérent."""
+    faux = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-02", "2024-01-03"]),
+        "ticker": ["TEST", "TEST"],
+        "open":   [100.0, 101.0],
+        "high":   [98.0,  103.0],   # high < low sur la première ligne
+        "low":    [99.0,  100.0],
+        "close":  [100.0, 102.0],
+        "volume": [1000.0, 1000.0],
+    })
+    rapport = audit(faux)
+    ligne = rapport[rapport["contrôle"] == "incoherence_ohlc_high_inferieur_low"]
+    assert len(ligne) == 1
+    assert int(ligne.iloc[0]["nb_anomalies"]) == 1
+
+
+def test_audit_detecte_valeurs_manquantes():
+    """Un DataFrame avec un NaN dans close est bien détecté."""
+    faux = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-02", "2024-01-03"]),
+        "ticker": ["TEST", "TEST"],
+        "open":   [100.0, 101.0],
+        "high":   [101.0, 103.0],
+        "low":    [99.0,  100.0],
+        "close":  [np.nan, 102.0],
+        "volume": [1000.0, 1000.0],
+    })
+    rapport = audit(faux)
+    ligne = rapport[rapport["contrôle"] == "valeurs_manquantes_close"]
+    assert len(ligne) == 1
+    assert int(ligne.iloc[0]["nb_anomalies"]) == 1
+
+
+def test_audit_nb_anomalies_non_negatif(rapport_audit):
+    """nb_anomalies est toujours ≥ 0."""
+    assert (rapport_audit["nb_anomalies"] >= 0).all()
