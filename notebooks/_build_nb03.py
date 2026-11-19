@@ -46,8 +46,6 @@ if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 # -----------------------------------------------------------------
 
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -146,7 +144,7 @@ for ax in axes.flat:
     ax.set_xlabel("Lag")
 plt.tight_layout()
 fig.savefig(REP_FIG / "acf_pacf_dia.png", dpi=120, bbox_inches="tight")
-plt.close(fig)
+plt.show()
 print("Figure sauvegardée :", str(REP_FIG / "acf_pacf_dia.png"))
 """
 
@@ -300,7 +298,7 @@ plot_acf(r_resid,     lags=25, ax=axes[0], title="ACF résidus ARIMA")
 plot_acf(r_resid**2,  lags=25, ax=axes[1], title="ACF résidus² ARIMA (test ARCH)")
 plt.tight_layout()
 fig.savefig(REP_FIG / "acf_residus_arima.png", dpi=120, bbox_inches="tight")
-plt.close(fig)
+plt.show()
 print()
 print("Figure sauvegardée :", str(REP_FIG / "acf_residus_arima.png"))
 
@@ -426,7 +424,7 @@ ax.set_title("Prévision vs Réalisé — Fenêtre de test")
 ax.legend()
 plt.tight_layout()
 fig.savefig(REP_FIG / "prevision_vs_realise_test.png", dpi=120, bbox_inches="tight")
-plt.close(fig)
+plt.show()
 print("Figure sauvegardée :", str(REP_FIG / "prevision_vs_realise_test.png"))
 """
 
