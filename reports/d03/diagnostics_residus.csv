@@ -1,0 +1,8 @@
+modele,test,lag,stat,pval
+"ARIMA(0,0,3)",ljung_box_residus,5.0,3.0291,0.695493
+"ARIMA(0,0,3)",ljung_box_residus,10.0,77.6441,0.0
+"ARIMA(0,0,3)",ljung_box_residus,20.0,104.17,0.0
+"ARIMA(0,0,3)",ljung_box_residus_carres,5.0,634.5522,0.0
+"ARIMA(0,0,3)",ljung_box_residus_carres,10.0,1191.0545,0.0
+"ARIMA(0,0,3)",ljung_box_residus_carres,20.0,1390.0792,0.0
+"ARIMA(0,0,3)",jarque_bera,,10970.6001,0.0
