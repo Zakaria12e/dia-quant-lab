@@ -189,7 +189,7 @@ Sans réseau, positionner `DEMO_MODE=1` : le code lira le snapshot existant.
 
 ```bash
 python -m pytest tests/ -v
-# Attendu : 22 tests passent, 0 échec
+# Attendu : 36 tests passent, 0 échec (22 pour D02/D03, 14 ajoutés en D04)
 ```
 
 ### Étape 3 — Regénérer le notebook D03
@@ -229,7 +229,7 @@ reports/
 
 ---
 
-## 9. Table de correspondance cahier → fichiers (D02 · D03)
+## 9. Table de correspondance cahier → fichiers (D02 · D03 · D04)
 
 ### D02 — Données et audit
 
@@ -272,6 +272,23 @@ reports/
 | Notebook exécuté avec sorties | `notebooks/03_econometrie_moyenne.ipynb` |
 | Tests anti-fuite (9 tests) | `tests/test_no_leakage.py` |
 
+### D04 — Module de risque
+
+| Exigence du cahier | Fichier(s) livré(s) |
+|:---|:---|
+| ARCH-LM (rendements centrés et résidus ARIMA de D03) | `src/risk.py` : `arch_lm_test()`, `tableau_arch_lm()` → `reports/d04/arch_lm.csv` |
+| GARCH(1,1), et grille GARCH / GJR-GARCH / EGARCH × normale / t / skewt, choix par AIC d'apprentissage | `src/risk.py` : `fit_vol_model()`, `fit_grid()`, `modele_retenu()` → `reports/d04/grille_modeles.csv`, `parametres_retenu.csv` |
+| Volatilité prévue à un pas, paramètres gelés | `src/risk.py` : `forecast_vol()` → `reports/d04/figures/volatilite_prevue.png` |
+| Diagnostics des résidus standardisés (Ljung-Box z et z², ARCH-LM, Jarque-Bera, QQ-plot) | `src/risk.py` : `diagnostics_residus_std()`, `qq_points()` → `reports/d04/diagnostics_residus_std.csv`, `figures/qqplot_residus_std.png` |
+| VaR et ES 95 % / 99 % (paramétriques, EWMA, simulation historique) | `src/risk.py` : `var_es_parametric()`, `mesure_ewma()`, `mesure_historique()` → `reports/d04/figures/var_es_violations.png` |
+| Tableaux de vérification (Kupiec, Christoffersen, Acerbi-Székely, QLIKE, Diebold-Mariano, Mincer-Zarnowitz) | `src/risk_backtest.py` → `reports/d04/verification_var_es.csv`, `eval_volatilite.csv`, `dm_volatilite.csv` |
+| Unités cohérentes (% par jour, × √252 explicite, perte positive en % et en USD) | docstrings de `src/risk.py` ; colonnes `*_pct`, `*_usd`, `sigma_annuelle_pct` |
+| Mesures comparées à des observations futures (date de prévision, date cible) | `reports/d04/risque_date.csv` (validation + test) |
+| Anti-fuite, unités, backtests, sauvegarde (14 tests) | `tests/test_risk.py` |
+| Coût de calcul (axe B09) | `src/risk.py` : `tableau_temps()` → `reports/d04/temps_calcul.csv` |
+| Fonctions prêtes pour l'application, la stratégie et le paper trading | `src/risk.py` : `save_risk_model()`, `load_risk_model()`, `risk_today()`, `risk_series()` ; `models/risk_params.json` |
+| Notebook exécuté avec sorties | `notebooks/04_risque.ipynb` |
+
 ### Paramètres gelés (configs/frozen.yaml)
 
 | Paramètre | Valeur |
@@ -286,10 +303,72 @@ reports/
 | Période saisonnière | 5 (hebdomadaire) |
 | Exogène SARIMAX | spy\_ret\_lag1 |
 | Seed | 42 |
+| Risque : niveaux VaR / ES | 95 % et 99 % (alphas 0,05 et 0,01) |
+| Risque : grille de modèles | GARCH(1,1), GJR-GARCH(1,1,1), EGARCH(1,1,1) × lois normale, t, skewt |
+| Risque : EWMA | λ = 0,94 (RiskMetrics) |
+| Risque : simulation historique | fenêtre de 250 séances |
+| Risque : écart-type glissant | fenêtre de 20 séances |
+| Risque : capital | 100 000 $ |
+| Risque : tests ES d'Acerbi-Székely | 5 000 simulations, seuil des tests 5 % |
 
 ---
 
-## 10. Qui fait quoi
+## 10. Reproduire D04
+
+### Commandes
+
+```bash
+python -m pip install -r requirements.txt      # ajoute arch (>= 7.0)
+python -m pytest -q                            # attendu : 36 passed
+python -m nbconvert --to notebook --execute --inplace notebooks/04_risque.ipynb
+# Durée ~40 s — exécute le notebook, écrit reports/d04/ et models/risk_params.json
+```
+
+Le notebook lit le snapshot Parquet le plus récent de `data/` : aucune connexion réseau n'est nécessaire. Les résultats sont identiques d'une exécution à l'autre, sauf les temps de calcul et la date d'estimation inscrite dans `models/risk_params.json`. Sous Windows, si la console affiche une erreur d'encodage, positionner `PYTHONIOENCODING=utf-8`.
+
+### Fichiers produits
+
+```
+models/
+  risk_params.json               modèle retenu : type, loi, paramètres gelés, période d'apprentissage
+
+reports/d04/
+  arch_lm.csv                    test ARCH-LM (5 et 10 retards), rendements centrés et résidus ARIMA
+  grille_modeles.csv             9 modèles : AIC, BIC, log-vraisemblance, persistance, demi-vie, temps
+  parametres_retenu.csv          paramètres et p-values du modèle retenu
+  diagnostics_residus_std.csv    Ljung-Box z et z², ARCH-LM z, Jarque-Bera
+  verification_var_es.csv        violations, Kupiec, Christoffersen, ES vs perte réalisée, Z2 (validation, test)
+  eval_volatilite.csv            QLIKE, MSE, Mincer-Zarnowitz contre r² et Parkinson²
+  dm_volatilite.csv              Diebold-Mariano sur QLIKE (modèle retenu contre les baselines)
+  temps_calcul.csv               temps d'estimation et de prévision par modèle (s)
+  risque_date.csv                prévisions datées et réalisations, validation + test
+  figures/
+    qqplot_residus_std.png
+    volatilite_prevue.png
+    var_es_violations.png
+```
+
+---
+
+## 11. Utiliser le module de risque
+
+L'application (vue Risk Management, D07), la stratégie et le backtest (D06) et le paper trading (D08) ne ré-estiment jamais le modèle de risque : ils rechargent `models/risk_params.json` et appliquent les paramètres gelés aux rendements disponibles.
+
+```python
+from src.data import load_closes
+from src.risk import rendements_pct, load_risk_model, risk_today, risk_series
+
+r = rendements_pct(load_closes())      # rendements log en % par jour, dernière séance incluse
+modele = load_risk_model()             # models/risk_params.json, sans ré-estimation
+demain = risk_today(r, modele)         # dict pour la séance t+1 : sigma_pct, var95_pct, es95_pct, var95_usd…
+serie = risk_series(r, modele)         # DataFrame indexé par date_cible : backtest D06, graphiques D07
+```
+
+`risk_today` renvoie exactement la dernière ligne de `risk_series`. Toutes les VaR et ES sont des pertes positives sur une séance, en % par jour et en USD sur le capital de `configs/frozen.yaml`.
+
+---
+
+## 12. Qui fait quoi
 
 **Hamza Aghazzaf — données, économétrie et risque.** Collecte, audit qualité et snapshots de DIA et SPY (D02). ARIMA, SARIMA et SARIMAX avec SPY retardé (D03). Test ARCH-LM, GARCH(1,1), volatilité prévue, VaR et Expected Shortfall (D04). Vues Market Data et Risk Management.
 
