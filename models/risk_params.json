@@ -23,7 +23,7 @@
     "mu": "% par jour",
     "omega": "%^2 par jour (EGARCH : ln %^2)"
   },
-  "date_estimation": "2026-11-26T18:39:51",
+  "date_estimation": "2026-11-26T18:51:47",
   "periode_apprentissage": [
     "2018-01-01",
     "2022-12-31"
