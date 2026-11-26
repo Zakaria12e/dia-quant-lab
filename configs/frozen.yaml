@@ -22,3 +22,16 @@ econometrics:
   max_q: 3
   seasonal_period: 5
   exog: spy_ret_lag1
+
+risk:
+  scale: 100
+  alphas: [0.05, 0.01]          # VaR/ES 95 % et 99 %
+  models:                        # grille comparée sur l'AIC d'apprentissage
+    - {name: GARCH,     vol: GARCH,  p: 1, o: 0, q: 1}
+    - {name: GJR-GARCH, vol: GARCH,  p: 1, o: 1, q: 1}
+    - {name: EGARCH,    vol: EGARCH, p: 1, o: 1, q: 1}
+  distributions: [normal, t, skewt]
+  ewma_lambda: 0.94              # RiskMetrics (1996)
+  hs_window: 250                 # simulation historique, 1 an de bourse
+  rolling_window: 20
+  capital: 100000
