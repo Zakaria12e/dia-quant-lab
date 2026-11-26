@@ -35,3 +35,5 @@ risk:
   hs_window: 250                 # simulation historique, 1 an de bourse
   rolling_window: 20
   capital: 100000
+  es_n_sim: 5000                 # tirages Monte-Carlo du test ES d'Acerbi-Székely (seed globale)
+  seuil_tests: 0.05              # seuil de rejet des tests de backtest (Kupiec, Christoffersen, Z2, DM, MZ)
