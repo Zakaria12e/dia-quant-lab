@@ -45,7 +45,9 @@ import yaml
 from arch import arch_model
 from arch import __version__ as _ARCH_VERSION
 from arch.univariate import Normal, SkewStudent, StudentsT
-from statsmodels.stats.diagnostic import het_arch
+from scipy import stats as scipy_stats
+from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
+from statsmodels.stats.stattools import jarque_bera
 
 from src.features import log_returns
 
@@ -764,3 +766,277 @@ def risk_today(r_pct_full: pd.Series, model_path: str | Path | dict | None = Non
         if col != "date_prevision":
             out[col] = float(derniere[col])
     return out
+
+
+# ---------------------------------------------------------------------------
+# Tableaux d'analyse (notebook D04, vue Risk Management de l'application)
+# ---------------------------------------------------------------------------
+
+def tableau_arch_lm(series: dict, lags=(5, 10)) -> pd.DataFrame:
+    """Test ARCH-LM (Engle, 1982) pour plusieurs séries et plusieurs retards.
+
+    Paramètres
+    ----------
+    series : dict {libellé: Series en % par jour} (rendements centrés, résidus…).
+    lags   : retards testés.
+
+    Retourne un DataFrame : serie, retards, stat_lm, p_value, n, conclusion.
+    """
+    lignes = []
+    for nom, x in series.items():
+        for k in lags:
+            t = arch_lm_test(x, nlags=k)
+            lignes.append({"serie": nom, "retards": k, "stat_lm": t["stat_lm"],
+                           "p_value": t["pval_lm"], "n": t["n"], "conclusion": t["conclusion"]})
+    return pd.DataFrame(lignes)
+
+
+def correlation_levier(r_pct: pd.Series) -> dict:
+    """Effet de levier : le rendement d'aujourd'hui annonce-t-il la volatilité de demain ?
+
+    Corrélations de Pearson (avec p-value) entre r_t et |r_{t+1}|, et entre r_t
+    et r²_{t+1}. Une corrélation NÉGATIVE signifie qu'une baisse est suivie
+    d'une volatilité plus forte qu'une hausse de même taille (asymétrie que
+    GJR-GARCH et EGARCH modélisent).
+    Moyennes de |r_{t+1}| après une baisse et après une hausse, en % par jour.
+    """
+    r = pd.Series(r_pct).dropna()
+    x, y = r.iloc[:-1].to_numpy(), r.iloc[1:].to_numpy()
+    c1, p1 = scipy_stats.pearsonr(x, np.abs(y))
+    c2, p2 = scipy_stats.pearsonr(x, y ** 2)
+    return {
+        "n": int(x.size),
+        "corr_r_absr_suivant": float(c1), "pval_absr": float(p1),
+        "corr_r_r2_suivant": float(c2), "pval_r2": float(p2),
+        "absr_moyen_apres_baisse_pct": float(np.abs(y[x < 0]).mean()),
+        "absr_moyen_apres_hausse_pct": float(np.abs(y[x > 0]).mean()),
+    }
+
+
+_ROLES = {
+    "mu": ("moyenne conditionnelle", "% par jour"),
+    "omega": ("constante de variance", "%² par jour (EGARCH : ln %²)"),
+    "alpha[1]": ("réaction aux chocs", "sans unité"),
+    "gamma[1]": ("asymétrie (effet de levier)", "sans unité"),
+    "beta[1]": ("mémoire de la volatilité", "sans unité"),
+    "nu": ("degrés de liberté (queues épaisses)", "sans unité"),
+    "eta": ("degrés de liberté (queues épaisses)", "sans unité"),
+    "lambda": ("asymétrie de la loi (Hansen)", "sans unité"),
+}
+
+
+def tableau_parametres(fit: dict) -> pd.DataFrame:
+    """Paramètres estimés d'un modèle (``fit_vol_model``) avec p-values, rôle et unité."""
+    lignes = []
+    for nom, val in fit["params"].items():
+        role, unite = _ROLES.get(nom, ("", ""))
+        lignes.append({"parametre": nom, "valeur": float(val),
+                       "p_value": float(fit["pvalues"][nom]), "role": role, "unite": unite})
+    return pd.DataFrame(lignes)
+
+
+def resume_modele(fit: dict) -> pd.DataFrame:
+    """Indicateurs dérivés d'un modèle : persistance, demi-vie, volatilité de long terme."""
+    rac = np.sqrt(JOURS_PAR_AN)
+    lignes = [
+        ("persistance", fit["persistance"], "sans unité"),
+        ("demi-vie d'un choc", fit["demi_vie_seances"], "séances"),
+        ("volatilité de long terme", fit["vol_lt_pct_jour"], "% par jour"),
+        ("volatilité de long terme annualisée (× √252)", fit["vol_lt_annuelle_pct"], "% par an"),
+        ("volatilité conditionnelle moyenne (apprentissage)",
+         fit["vol_moyenne_apprentissage_pct"], "% par jour"),
+        ("volatilité conditionnelle moyenne annualisée (× √252)",
+         fit["vol_moyenne_apprentissage_pct"] * rac, "% par an"),
+    ]
+    return pd.DataFrame(lignes, columns=["indicateur", "valeur", "unite"])
+
+
+def diagnostics_residus_std(z: pd.Series, lags=(5, 10, 20), arch_lags=(5, 10)) -> pd.DataFrame:
+    """Diagnostics des résidus standardisés z (sans unité).
+
+    Ljung-Box sur z (autocorrélation restante de la moyenne) et sur z²
+    (effet ARCH restant), ARCH-LM sur z, Jarque-Bera (normalité ; un rejet est
+    attendu si la loi retenue n'est pas normale). H0 = « résidus propres ».
+
+    Retourne un DataFrame : test, retards, stat, p_value, conclusion (seuil
+    ``risk.seuil_tests``). ``df.attrs`` : asymetrie et kurtosis de z.
+    """
+    seuil = _risk_config()["seuil_tests"]
+    z = pd.Series(z).dropna()
+    lignes = []
+    lb = acorr_ljungbox(z, lags=list(lags), return_df=True)
+    lb2 = acorr_ljungbox(z ** 2, lags=list(lags), return_df=True)
+    for k in lags:
+        lignes.append(("Ljung-Box z", k, lb.loc[k, "lb_stat"], lb.loc[k, "lb_pvalue"]))
+    for k in lags:
+        lignes.append(("Ljung-Box z²", k, lb2.loc[k, "lb_stat"], lb2.loc[k, "lb_pvalue"]))
+    for k in arch_lags:
+        t = arch_lm_test(z, nlags=k)
+        lignes.append(("ARCH-LM z", k, t["stat_lm"], t["pval_lm"]))
+    jb, jb_p, asym, kurt = jarque_bera(z)
+    lignes.append(("Jarque-Bera z", np.nan, jb, jb_p))
+    df = pd.DataFrame(lignes, columns=["test", "retards", "stat", "p_value"])
+    df["conclusion"] = np.where(df["p_value"] < seuil, "H0 rejetée", "H0 non rejetée")
+    df.attrs["asymetrie"] = float(asym)
+    df.attrs["kurtosis"] = float(kurt)
+    return df
+
+
+def qq_points(z: pd.Series, dist: str, params: pd.Series | dict) -> pd.DataFrame:
+    """Points du QQ-plot des résidus standardisés contre la loi STANDARDISÉE ``dist``.
+
+    Quantiles théoriques F⁻¹((i − 0,5)/n) contre quantiles empiriques triés (sans unité).
+    """
+    zs = np.sort(pd.Series(z).dropna().to_numpy())
+    p = (np.arange(1, zs.size + 1) - 0.5) / zs.size
+    theo = np.asarray(distribution(dist).ppf(p, dist_params(dist, params)))
+    return pd.DataFrame({"theorique": theo, "empirique": zs})
+
+
+# ---------------------------------------------------------------------------
+# Mesures de risque comparées (modèle retenu, GARCH normal, EWMA, HS)
+# ---------------------------------------------------------------------------
+
+def _ajouter_usd(serie: pd.DataFrame, capital: float, alphas) -> pd.DataFrame:
+    for alpha in alphas:
+        niv = _niveau(alpha)
+        serie[f"var{niv}_usd"] = perte_usd(serie[f"var{niv}_pct"], capital)
+        serie[f"es{niv}_usd"] = perte_usd(serie[f"es{niv}_pct"], capital)
+    return serie
+
+
+def mesure_parametrique(r_pct: pd.Series, modele: dict, nom: str | None = None,
+                        capital: float | None = None) -> dict:
+    """Mesure de risque d'un modèle GARCH/GJR/EGARCH à paramètres gelés.
+
+    ``modele`` : dict avec spec, params, nom (``fit_vol_model`` ou ``load_risk_model``).
+    Retourne un dict : nom, type="parametrique", serie (``risk_series``, % par
+    jour et USD), dist, dist_params.
+    """
+    serie = risk_series(r_pct, modele, capital)
+    spec = modele["spec"]
+    return {"nom": nom or modele["nom"], "type": "parametrique", "serie": serie,
+            "dist": spec["dist"], "dist_params": dist_params(spec["dist"], modele["params"])}
+
+
+def mesure_ewma(r_pct: pd.Series, lam: float | None = None, capital: float | None = None) -> dict:
+    """Mesure de risque EWMA RiskMetrics : loi normale, μ = 0, σ = ``ewma_sigma``.
+
+    VaR/ES en perte positive (% par jour et USD), indexées par date cible ;
+    seules les données ≤ t sont utilisées pour la date cible t+1.
+    """
+    rcfg = _risk_config()
+    capital = rcfg["capital"] if capital is None else capital
+    sigma = ewma_sigma(r_pct, lam)
+    serie = pd.DataFrame({"mu_pct": 0.0, "sigma_pct": sigma}, index=sigma.index)
+    serie["sigma_annuelle_pct"] = serie["sigma_pct"] * np.sqrt(JOURS_PAR_AN)
+    loi = distribution("normal")
+    for alpha in rcfg["alphas"]:
+        v = var_es_parametric(serie["mu_pct"], serie["sigma_pct"], alpha, loi, None)
+        serie[f"var{_niveau(alpha)}_pct"] = v["var_pct"]
+        serie[f"es{_niveau(alpha)}_pct"] = v["es_pct"]
+    serie = _ajouter_usd(serie, capital, rcfg["alphas"]).dropna()
+    return {"nom": "EWMA", "type": "parametrique", "serie": serie,
+            "dist": "normal", "dist_params": None}
+
+
+def mesure_historique(r_pct: pd.Series, window: int | None = None,
+                      capital: float | None = None) -> dict:
+    """Mesure de risque par simulation historique sur ``window`` séances (défaut : hs_window).
+
+    VaR/ES en perte positive (% par jour et USD), indexées par date cible.
+    """
+    rcfg = _risk_config()
+    capital = rcfg["capital"] if capital is None else capital
+    window = rcfg["hs_window"] if window is None else window
+    serie = pd.concat([historical_simulation_var_es(r_pct, window, a) for a in rcfg["alphas"]],
+                      axis=1)
+    serie = _ajouter_usd(serie, capital, rcfg["alphas"]).dropna()
+    return {"nom": f"Simulation historique ({window} j)", "type": "historique",
+            "serie": serie, "window": window}
+
+
+def tableau_risque_date(r_pct: pd.Series, serie: pd.DataFrame, sigma_parkinson: pd.Series,
+                        fenetres_idx: dict) -> pd.DataFrame:
+    """Tableau daté prévision / réalisation du modèle retenu (export risque_date.csv).
+
+    Paramètres
+    ----------
+    r_pct           : rendements réalisés en % par jour.
+    serie           : sortie de ``risk_series`` (indexée par date cible).
+    sigma_parkinson : volatilité réalisée de Parkinson en % par jour.
+    fenetres_idx    : dict {nom_fenetre: DatetimeIndex des dates cibles}.
+
+    Colonnes : date_prevision, date_cible, fenetre, rendement_realise_pct,
+    sigma_pct, sigma_parkinson_pct, var95_pct, es95_pct, var99_pct, es99_pct
+    (% par jour), var95_usd (USD), violation95, violation99 (1 si r < −VaR).
+    """
+    morceaux = []
+    for nom, idx in fenetres_idx.items():
+        s = serie.reindex(idx)
+        df = pd.DataFrame({
+            "date_prevision": s["date_prevision"],
+            "date_cible": idx,
+            "fenetre": nom,
+            "rendement_realise_pct": r_pct.reindex(idx),
+            "sigma_pct": s["sigma_pct"],
+            "sigma_parkinson_pct": sigma_parkinson.reindex(idx),
+            "var95_pct": s["var95_pct"], "es95_pct": s["es95_pct"],
+            "var99_pct": s["var99_pct"], "es99_pct": s["es99_pct"],
+            "var95_usd": s["var95_usd"],
+        }, index=idx)
+        df["violation95"] = (df["rendement_realise_pct"] < -df["var95_pct"]).astype(int)
+        df["violation99"] = (df["rendement_realise_pct"] < -df["var99_pct"]).astype(int)
+        morceaux.append(df)
+    return pd.concat(morceaux).reset_index(drop=True)
+
+
+def resume_var_moyenne(serie: pd.DataFrame, fenetres_idx: dict) -> pd.DataFrame:
+    """VaR et ES moyennes par fenêtre, en % par jour et en USD (perte positive, 1 séance).
+
+    ``serie`` : sortie de ``risk_series`` ou ``mesure_*``["serie"].
+    Retourne un DataFrame : fenetre, mesure, niveau, moyenne_pct, moyenne_usd, n.
+    """
+    lignes = []
+    for nom, idx in fenetres_idx.items():
+        s = serie.reindex(idx)
+        for alpha in _risk_config()["alphas"]:
+            niv = _niveau(alpha)
+            for mesure in ("var", "es"):
+                lignes.append({
+                    "fenetre": nom, "mesure": mesure.upper(), "niveau": niv,
+                    "moyenne_pct": float(s[f"{mesure}{niv}_pct"].mean()),
+                    "moyenne_usd": float(s[f"{mesure}{niv}_usd"].mean()),
+                    "n": int(s[f"{mesure}{niv}_pct"].notna().sum()),
+                })
+    return pd.DataFrame(lignes)
+
+
+def tableau_temps(ajustements: dict, r_pct: pd.Series) -> pd.DataFrame:
+    """Coût de calcul (axe B09), en secondes.
+
+    Pour chaque modèle de la grille : temps d'estimation sur l'apprentissage
+    (``fit_vol_model``) et temps de prévision 1 pas sur la série complète
+    (``forecast_vol``). Les baselines (EWMA, glissante, simulation historique)
+    n'ont pas d'estimation : seul le temps de calcul de la série est mesuré.
+    """
+    lignes = []
+    for nom, fit in ajustements.items():
+        prev = forecast_vol(fit["spec"], fit["params"], r_pct)
+        lignes.append({"modele": nom, "estimation_s": fit["temps_estimation_s"],
+                       "prevision_s": prev.attrs["temps_prevision_s"]})
+    rcfg = _risk_config()
+    baselines = {
+        "EWMA": lambda: ewma_sigma(r_pct),
+        f"Glissante {rcfg['rolling_window']} j": lambda: rolling_sigma(r_pct),
+        f"Simulation historique ({rcfg['hs_window']} j)":
+            lambda: [historical_simulation_var_es(r_pct, alpha=a) for a in rcfg["alphas"]],
+    }
+    for nom, calcul in baselines.items():
+        t0 = time.perf_counter()
+        calcul()
+        lignes.append({"modele": nom, "estimation_s": 0.0,
+                       "prevision_s": time.perf_counter() - t0})
+    df = pd.DataFrame(lignes)
+    df["total_s"] = df["estimation_s"] + df["prevision_s"]
+    return df.sort_values("total_s", ascending=False).reset_index(drop=True)

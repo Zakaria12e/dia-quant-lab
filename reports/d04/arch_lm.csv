@@ -1,0 +1,5 @@
+serie,retards,stat_lm,p_value,n,conclusion
+"Rendements centrés (apprentissage, %)",5,461.2185069255937,1.8671294853565978e-97,1258,H0 rejetée au seuil 5% : effet ARCH présent
+"Rendements centrés (apprentissage, %)",10,515.143864950289,2.5590836957974556e-104,1258,H0 rejetée au seuil 5% : effet ARCH présent
+"Résidus ARIMA(0,0,3) (apprentissage, %)",5,315.5559341842627,4.523297250733958e-66,1248,H0 rejetée au seuil 5% : effet ARCH présent
+"Résidus ARIMA(0,0,3) (apprentissage, %)",10,406.3082900691059,4.27523831006777e-81,1248,H0 rejetée au seuil 5% : effet ARCH présent

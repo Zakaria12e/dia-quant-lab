@@ -1,0 +1,32 @@
+{
+  "spec": {
+    "name": "EGARCH",
+    "vol": "EGARCH",
+    "p": 1,
+    "o": 1,
+    "q": 1,
+    "dist": "skewt"
+  },
+  "nom": "EGARCH-skewt",
+  "params": {
+    "mu": 0.019599415883889106,
+    "omega": 0.00840356883254465,
+    "alpha[1]": 0.18137567303220326,
+    "gamma[1]": -0.1693825587617467,
+    "beta[1]": 0.9727687727143483,
+    "eta": 6.850972391299168,
+    "lambda": -0.20489929116696695
+  },
+  "scale": 100,
+  "unites": {
+    "rendements": "% par jour (100 x rendement log)",
+    "mu": "% par jour",
+    "omega": "%^2 par jour (EGARCH : ln %^2)"
+  },
+  "date_estimation": "2026-11-26T18:39:51",
+  "periode_apprentissage": [
+    "2018-01-01",
+    "2022-12-31"
+  ],
+  "arch_version": "9.0.0"
+}

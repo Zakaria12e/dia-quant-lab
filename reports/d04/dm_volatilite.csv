@@ -1,0 +1,13 @@
+fenetre,mesure_realisee,comparaison,dm_stat,pval,mean_d,n,conclusion
+validation,r²,EGARCH-skewt vs EWMA,0.2629704003442118,0.7926815016229536,0.011803277322723307,502,pas de différence significative
+validation,r²,EGARCH-skewt vs Glissante 20 j,-0.7134409760260558,0.4759051210299225,-0.030144874513096838,502,pas de différence significative
+validation,r²,EGARCH-skewt vs GARCH-normal,0.043821240872780796,0.9650643551834176,0.0017346260251879556,502,pas de différence significative
+validation,Parkinson²,EGARCH-skewt vs EWMA,2.958102353427505,0.0032416806624211395,0.06259948424828322,502,EWMA meilleur
+validation,Parkinson²,EGARCH-skewt vs Glissante 20 j,1.9872986699339312,0.047433367025372486,0.04671349810240745,502,Glissante 20 j meilleur
+validation,Parkinson²,EGARCH-skewt vs GARCH-normal,-1.287095632298158,0.19865528141667785,-0.026095924284667758,502,pas de différence significative
+test,r²,EGARCH-skewt vs EWMA,-2.005660949261157,0.04548013166071071,-0.08606346852016014,459,EGARCH-skewt meilleur
+test,r²,EGARCH-skewt vs Glissante 20 j,-2.6108041218533113,0.009329170909388982,-0.14731806351965337,459,EGARCH-skewt meilleur
+test,r²,EGARCH-skewt vs GARCH-normal,-2.0073275919300357,0.045301800885916885,-0.042032077278160135,459,EGARCH-skewt meilleur
+test,Parkinson²,EGARCH-skewt vs EWMA,-0.7971839203841176,0.42575729693416153,-0.024899283674427026,459,pas de différence significative
+test,Parkinson²,EGARCH-skewt vs Glissante 20 j,-0.7090069959587715,0.47868087612984817,-0.029231934733674268,459,pas de différence significative
+test,Parkinson²,EGARCH-skewt vs GARCH-normal,-0.42579254774950676,0.6704590342041994,-0.006836889550179129,459,pas de différence significative

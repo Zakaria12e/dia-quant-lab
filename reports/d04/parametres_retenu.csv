@@ -1,0 +1,8 @@
+parametre,valeur,p_value,role,unite
+mu,0.019599415883889106,0.39075063830366474,moyenne conditionnelle,% par jour
+omega,0.00840356883254465,0.3149557433476273,constante de variance,%² par jour (EGARCH : ln %²)
+alpha[1],0.18137567303220326,0.00040622056076667626,réaction aux chocs,sans unité
+gamma[1],-0.1693825587617467,1.4469925710982232e-16,asymétrie (effet de levier),sans unité
+beta[1],0.9727687727143483,0.0,mémoire de la volatilité,sans unité
+eta,6.850972391299168,3.6320434140016746e-08,degrés de liberté (queues épaisses),sans unité
+lambda,-0.20489929116696695,6.825740993311663e-07,asymétrie de la loi (Hansen),sans unité

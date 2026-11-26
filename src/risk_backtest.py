@@ -384,3 +384,111 @@ def evaluer_volatilite(realized_var: pd.Series, forecast_var: pd.Series) -> dict
     return {"qlike_moyen": float(pertes["qlike"].mean()), "mse_moyen": float(pertes["mse"].mean()),
             "mz_a": mz["a"], "mz_b": mz["b"], "mz_r2": mz["r2"], "mz_p": mz["pval_joint"],
             "n": int(len(pertes))}
+
+
+# ---------------------------------------------------------------------------
+# Tableaux de vérification (notebook D04, application, backtest)
+# ---------------------------------------------------------------------------
+
+def simulateur_mesure(mesure: dict, r_pct_full: pd.Series, dates) -> Callable:
+    """Simulateur « sous la loi du modèle » pour une mesure de ``src.risk.mesure_*``.
+
+    paramétrique : r* = μ_t + σ_t z*, z* de la loi du modèle (% par jour) ;
+    historique   : r* tiré dans la fenêtre glissante qui a servi à la VaR.
+    """
+    from src.risk import distribution
+
+    if mesure["type"] == "historique":
+        return simulateur_historique(r_pct_full, dates, mesure["window"])
+    s = mesure["serie"].loc[dates]
+    return simulateur_parametrique(s["mu_pct"], s["sigma_pct"],
+                                   distribution(mesure["dist"]), mesure["dist_params"])
+
+
+def tableau_verification(r_pct: pd.Series, mesures: list, fenetres_idx: dict,
+                         alphas=None, n_sim: int | None = None,
+                         seed: int | None = None) -> pd.DataFrame:
+    """Tableau de vérification VaR/ES : chaque mesure × fenêtre × niveau.
+
+    Paramètres
+    ----------
+    r_pct        : rendements réalisés en % par jour.
+    mesures      : liste de dict produits par ``src.risk.mesure_*``.
+    fenetres_idx : dict {nom_fenetre: DatetimeIndex des dates cibles}.
+    alphas       : défaut ``risk.alphas`` de frozen.yaml.
+
+    Retourne un DataFrame : fenetre, modele, puis les colonnes de
+    ``verifier_var_es`` (violations / jours, taux observé vs attendu en %,
+    Kupiec p, Christoffersen indépendance p, couverture conditionnelle p, ES
+    prévu vs perte réalisée en % par jour, Z2 et sa p-value, conclusion).
+    """
+    if alphas is None:
+        alphas = _load_config()["risk"]["alphas"]
+    lignes = []
+    for nom_f, idx in fenetres_idx.items():
+        for m in mesures:
+            for alpha in alphas:
+                niv = int(round(100 * (1 - alpha)))
+                df = pd.concat([r_pct.reindex(idx).rename("r"),
+                                m["serie"][f"var{niv}_pct"].reindex(idx).rename("var"),
+                                m["serie"][f"es{niv}_pct"].reindex(idx).rename("es")],
+                               axis=1).dropna()
+                sim = simulateur_mesure(m, r_pct, df.index)
+                ligne = verifier_var_es(df["r"], df["var"], df["es"], alpha, sim, n_sim, seed)
+                lignes.append({"fenetre": nom_f, "modele": m["nom"], **ligne})
+    return pd.DataFrame(lignes)
+
+
+def _commun(series: dict, idx) -> pd.DataFrame:
+    """Aligne plusieurs Series sur ``idx`` et ne garde que les dates communes sans NaN."""
+    return pd.concat({k: pd.Series(v).reindex(idx) for k, v in series.items()}, axis=1).dropna()
+
+
+def tableau_volatilite(sigmas: dict, realisees: dict, fenetres_idx: dict) -> pd.DataFrame:
+    """Qualité des volatilités prévues : QLIKE, MSE et Mincer-Zarnowitz.
+
+    Paramètres
+    ----------
+    sigmas       : dict {modèle: σ prévue en % par jour, indexée par date cible}.
+    realisees    : dict {mesure: variance réalisée en %² par jour} (r², Parkinson²).
+    fenetres_idx : dict {nom_fenetre: DatetimeIndex}.
+
+    Tous les modèles sont comparés sur les MÊMES dates (intersection).
+    Retourne un DataFrame : fenetre, mesure_realisee, modele, qlike_moyen,
+    mse_moyen (%⁴), mz_a (%²), mz_b, mz_r2, mz_p (test a = 0, b = 1), n.
+    """
+    lignes = []
+    for nom_f, idx in fenetres_idx.items():
+        for nom_rv, rv in realisees.items():
+            df = _commun({"rv": rv, **sigmas}, idx)
+            for nom_m in sigmas:
+                ev = evaluer_volatilite(df["rv"], df[nom_m] ** 2)
+                lignes.append({"fenetre": nom_f, "mesure_realisee": nom_rv, "modele": nom_m, **ev})
+    return pd.DataFrame(lignes)
+
+
+def tableau_dm_volatilite(sigmas: dict, realisees: dict, fenetres_idx: dict,
+                          reference: str, concurrents: list) -> pd.DataFrame:
+    """Diebold-Mariano sur les pertes QLIKE : ``reference`` contre chaque concurrent.
+
+    d_t = QLIKE_ref − QLIKE_concurrent ; mean_d < 0 : la référence est meilleure.
+    Retourne un DataFrame : fenetre, mesure_realisee, comparaison, dm_stat,
+    pval, mean_d, n, conclusion (seuil ``risk.seuil_tests``).
+    """
+    seuil = _seuil()
+    lignes = []
+    for nom_f, idx in fenetres_idx.items():
+        for nom_rv, rv in realisees.items():
+            df = _commun({"rv": rv, **sigmas}, idx)
+            l_ref = vol_loss(df["rv"], df[reference] ** 2)["qlike"]
+            for c in concurrents:
+                d = dm_test_loss(l_ref, vol_loss(df["rv"], df[c] ** 2)["qlike"])
+                if d["pval"] < seuil:
+                    concl = f"{reference} meilleur" if d["mean_d"] < 0 else f"{c} meilleur"
+                else:
+                    concl = "pas de différence significative"
+                lignes.append({"fenetre": nom_f, "mesure_realisee": nom_rv,
+                               "comparaison": f"{reference} vs {c}", "dm_stat": d["dm_stat"],
+                               "pval": d["pval"], "mean_d": d["mean_d"], "n": d["n"],
+                               "conclusion": concl})
+    return pd.DataFrame(lignes)
